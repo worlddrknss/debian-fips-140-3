@@ -44,7 +44,8 @@ All images are published for `linux/amd64` and `linux/arm64` at
 | `latest-pqc`, `<version>-pqc` | OpenSSL FIPS provider **3.5.4**, adds ML-KEM, ML-DSA, SLH-DSA and hybrid PQC TLS. **In CMVP review, not yet validated.** | Distroless |
 | `latest-pqc-dev`, `<version>-pqc-dev` | 3.5.4 | Dev |
 
-Each build is also tagged `YYYYMMDD-<commit>` (plus the same suffixes), so you can pin a build.
+Each build is also tagged `YYYYMMDDHHMM-<commit>` (UTC; plus the same suffixes), so you can pin
+a build, and the tags sort in build order.
 For production, pin by digest.
 
 - **Distroless** images contain only what the runtime needs: glibc, OpenSSL and the FIPS
