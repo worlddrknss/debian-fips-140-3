@@ -27,7 +27,9 @@ with SBOMs rather than changelog entries.
 ### Changed
 
 - **`latest` now uses the OpenSSL 3.1.2 FIPS provider** (FIPS 140-3 validated, CMVP #4985).
-  The 3.5.4 provider moved to the `-pqc` tags.
+  The 3.5.4 provider moved to the `-pqc` tags. The base Dockerfile's own defaults match, so a
+  plain `docker build` also gets 3.1.2, and the build fails if `OPENSSL_FIPS_VERSION` and
+  `OPENSSL_FIPS_CMVP` disagree, so an image's CMVP label can't misstate its provider.
 - **The Bun image is now `debian-fipsbase-bun`**, since Bun's own crypto isn't FIPS validated.
   `debian-fips-bun` is no longer updated.
 - `GODEBUG=fips140=only` is set in the base images, so Go binaries built with `GOFIPS140` reject
