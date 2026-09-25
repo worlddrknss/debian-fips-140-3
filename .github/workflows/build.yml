@@ -197,7 +197,7 @@ jobs:
         id: tags
         run: |
           export REGISTRY="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/"
-          BUILD_TAG="$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          BUILD_TAG="$(date -u +%Y%m%d%H%M)-${GITHUB_SHA::7}"
           export BUILD_TAG
           echo "[]" > subjects.json
           docker buildx bake --print 2>/dev/null \

@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/) for repository releases. Published images are also
-rebuilt weekly with Debian security updates; those rebuilds get `build-YYYYMMDD-<sha>` releases
+rebuilt weekly with Debian security updates; those rebuilds get `build-YYYYMMDDHHMM-<sha>` releases
 with SBOMs rather than changelog entries.
 
 ## [Unreleased]
@@ -45,6 +45,8 @@ with SBOMs rather than changelog entries.
 
 ### Fixed
 
+- Build tags include the time (`YYYYMMDDHHMM-<commit>`), so builds from the same day sort in
+  order for tools that pick the newest tag.
 - `debian-fips-nginx-ingress` runs from `/`, so the controller can read its templates as
   UID 101 (it inherited `/home/nonroot` as its working directory and crash-looped).
 - `debian-fips-nginx-ingress` reloads NGINX without a shell. The controller ran `nginx -s reload`
