@@ -142,7 +142,6 @@ FROM dev AS rootfs
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 USER 0
-COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
 
 # libedit2 and its dependencies keep the njs package's CLI intact.
 RUN install-packages /rootfs \

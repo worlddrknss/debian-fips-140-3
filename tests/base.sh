@@ -78,6 +78,12 @@ if [ -d /var/lib/dpkg/status.d ]; then
   pass "every installed package ships its copyright file"
 fi
 
+# Dev variants ship install-packages for building app-specific distroless runtimes.
+if [ ! -d /var/lib/dpkg/status.d ]; then
+  command -v install-packages >/dev/null 2>&1 || fail "install-packages missing from the dev variant"
+  pass "install-packages is available"
+fi
+
 id nonroot >/dev/null 2>&1 || fail "nonroot user missing"
 [ "$(id -u nonroot)" = "65532" ] || fail "nonroot UID is not 65532"
 pass "nonroot user (UID 65532) exists"

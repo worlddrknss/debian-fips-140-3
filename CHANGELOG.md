@@ -10,6 +10,8 @@ with SBOMs rather than changelog entries.
 
 ### Added
 
+- `install-packages` in every `-dev` image, so apps can build their own distroless runtime with
+  extra Debian packages (fonts, `libstdc++`, ...), keeping copyright files and SBOM records.
 - Distroless variants of every runtime image: no shell or package manager, running as `nonroot`
   (65532). The existing images become the `-dev` variants.
 - `-pqc` tags built with the OpenSSL 3.5.4 FIPS provider (ML-KEM, ML-DSA, SLH-DSA), which is in

@@ -88,6 +88,27 @@ Distroless images have no shell, so `CMD` and `ENTRYPOINT` must use the exec (JS
 anything that needs `RUN` (creating users, changing permissions) happens in a `-dev` stage and is
 copied in.
 
+### Adding Debian packages to a distroless image
+
+Some apps need system packages the distroless images leave out, such as fonts or `libstdc++`.
+Every `-dev` image includes `install-packages`, the script that assembles the distroless images:
+it copies the files of installed Debian packages into a directory, keeps their copyright files,
+and records them in `/var/lib/dpkg/status.d/` so scanners and SBOMs still see them. Install the
+packages in a `-dev` stage, collect them, and copy the result onto the distroless image:
+
+```dockerfile
+FROM ghcr.io/worlddrknss/debian-fips-node:latest-dev AS rootfs
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core \
+ && install-packages /rootfs fontconfig fontconfig-config libfontconfig1 fonts-dejavu-core
+
+FROM ghcr.io/worlddrknss/debian-fips-node:latest
+COPY --from=rootfs /rootfs/ /
+```
+
+List every package the files need, including dependencies not already in the distroless image;
+`install-packages` copies only the packages it's given.
+
 ## Verifying an image
 
 ```sh

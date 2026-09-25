@@ -93,7 +93,6 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends libicu76 libstdc++6 \
  && rm -rf /var/lib/apt/lists/*
 
-COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
 RUN install-packages /rootfs libicu76 libstdc++6
 
 COPY --from=dotnet-download /runtime/ /rootfs/usr/share/dotnet/

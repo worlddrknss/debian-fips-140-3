@@ -147,6 +147,11 @@ ENV OPENSSL_CONF=/etc/ssl/openssl.cnf \
     OPENSSL_MODULES=/usr/lib/ossl-modules \
     GODEBUG=fips140=only
 
+# Lets images built FROM this one assemble their own distroless runtime with
+# extra Debian packages (see "Adding Debian packages to a distroless image" in
+# the README). The rootfs stage below uses it the same way.
+COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
+
 # Restore the default shell so images built FROM this one aren't affected.
 SHELL ["/bin/sh", "-c"]
 
@@ -162,8 +167,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
  && apt-get install -y --no-install-recommends netbase busybox-static \
  && rm -rf /var/lib/apt/lists/*
-
-COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
 
 # openssl-provider-legacy is deliberately absent: libssl3t64 depends on it,
 # but its module is removed and nothing in the rootfs needs it. gcc-*-base
