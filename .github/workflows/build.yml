@@ -12,9 +12,11 @@ on:
 permissions:
   contents: read
 
+# A newer commit cancels an in-progress run, except on main, where that
+# would interrupt a publish halfway.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   lint:
@@ -135,24 +137,21 @@ jobs:
       # Pushes this architecture untagged, by digest. The manifest job joins
       # the amd64 and arm64 digests under the real tags. The build itself is
       # served from the cache populated above.
+      # The metadata goes to a file: with every image's provenance it is too
+      # large to pass between steps in an environment variable.
       - name: Push by digest
-        id: push
         if: env.PUBLISH == 'true'
-        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         env:
           PUSH_BY_DIGEST: "true"
-        with:
-          source: .
+        run: docker buildx bake --metadata-file "$RUNNER_TEMP/bake-metadata.json"
 
       - name: Export digests
         if: env.PUBLISH == 'true'
-        env:
-          METADATA: ${{ steps.push.outputs.metadata }}
         run: |
           mkdir -p digests
-          echo "$METADATA" \
-            | jq 'with_entries(.value = .value["containerimage.digest"])' \
-            > "digests/${{ matrix.arch }}.json"
+          jq 'with_entries(select(.value | type == "object" and has("containerimage.digest"))
+                | .value = .value["containerimage.digest"])' \
+            "$RUNNER_TEMP/bake-metadata.json" > "digests/${{ matrix.arch }}.json"
           cat "digests/${{ matrix.arch }}.json"
 
       - name: Upload digests
