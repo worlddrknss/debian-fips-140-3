@@ -1,0 +1,5 @@
+ignored:
+  # Debian drops superseded package versions from the archive when security
+  # updates land, so pinned apt versions break the build. The base image is
+  # pinned by digest instead, and CI rebuilds weekly to pick up updates.
+  - DL3008

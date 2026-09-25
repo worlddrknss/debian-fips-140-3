@@ -1,0 +1,41 @@
+# System OpenSSL configuration: FIPS provider only.
+#
+# The default provider is intentionally not activated, so non-approved
+# algorithms (MD5, RC4, DES, ...) are unavailable. The base provider supplies
+# only encoders/decoders for key serialization and contains no crypto.
+
+config_diagnostics = 1
+openssl_conf = openssl_init
+# Node.js reads the nodejs_conf section instead of openssl_conf by default.
+nodejs_conf = openssl_init
+
+.include /usr/lib/ssl/fipsmodule.cnf
+
+[openssl_init]
+providers = provider_sect
+alg_section = algorithm_sect
+ssl_conf = ssl_sect
+
+[provider_sect]
+fips = fips_sect
+base = base_sect
+
+[base_sect]
+activate = 1
+
+[algorithm_sect]
+default_properties = fips=yes
+
+# System-wide TLS policy for every libssl client and server.
+#
+# CJIS Security Policy v6 requires symmetric keys of at least 256 bits for
+# CJI in transit, so only AES-256-GCM is allowed. TLS 1.2 is restricted to
+# ECDHE key exchange for forward secrecy. Key exchange groups keep OpenSSL's
+# defaults, which include the hybrid ML-KEM groups.
+[ssl_sect]
+system_default = system_default_sect
+
+[system_default_sect]
+MinProtocol = TLSv1.2
+CipherString = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
+Ciphersuites = TLS_AES_256_GCM_SHA384
