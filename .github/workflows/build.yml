@@ -97,25 +97,31 @@ jobs:
       # Report-only: findings go to the job summary and to code scanning, and
       # never fail the build. Only vulnerabilities with an available fix are
       # reported, since those are the ones a rebuild or bump can resolve.
+      # Results are split into runtime/ and dev/ because code scanning accepts
+      # at most 20 runs per upload.
       - name: Scan images
         run: |
-          mkdir -p scan
+          mkdir -p scan/runtime scan/dev
           docker buildx bake --print 2>/dev/null | jq -r '.target[].tags[0]' | sort | while read -r ref; do
             name="$(echo "$ref" | tr ':' '_')"
+            case "$ref" in
+              *-dev) dir=scan/dev ;;
+              *) dir=scan/runtime ;;
+            esac
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "$PWD/scan:/scan" \
+              -v "$PWD/$dir:/scan" \
               "$GRYPE" "$ref" --only-fixed \
               -o "table=/scan/$name.txt" -o "sarif=/scan/$name.sarif"
             # A distinct category per image and arch keeps code scanning from
             # treating the uploads as one run.
             jq --arg id "grype/$name/${{ matrix.arch }}/" \
-              '.runs[].automationDetails = {id: $id}' "scan/$name.sarif" > "scan/$name.tmp"
-            mv "scan/$name.tmp" "scan/$name.sarif"
+              '.runs[].automationDetails = {id: $id}' "$dir/$name.sarif" > "$dir/$name.tmp"
+            mv "$dir/$name.tmp" "$dir/$name.sarif"
             {
               echo "### $ref (${{ matrix.arch }})"
               echo '```'
-              cat "scan/$name.txt"
+              cat "$dir/$name.txt"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           done
@@ -123,11 +129,17 @@ jobs:
           GRYPE: anchore/grype:v0.119.0
 
       # Pull requests from forks get a read-only token and can't upload.
-      - name: Upload scan results to code scanning
+      - name: Upload runtime scan results to code scanning
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
-          sarif_file: scan
+          sarif_file: scan/runtime
+
+      - name: Upload dev scan results to code scanning
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: scan/dev
 
       - name: Log in to GHCR
         if: env.PUBLISH == 'true'
