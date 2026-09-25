@@ -1,4 +1,4 @@
-IMAGES  := base go node bun python dotnet java
+IMAGES  := base go node bun python dotnet java nginx-ingress
 FLAVORS := "" -pqc
 
 HADOLINT     := hadolint/hadolint:v2.15.1
@@ -58,16 +58,30 @@ test-dotnet:
 test-java:
 	$(call suite,debian-fips-java,/tests/base.sh && /tests/java.sh)
 
-# The published distroless images must have no shell and run as nonroot.
+# Privileged ports are restricted as in Kubernetes (Docker allows them by
+# default), so binding port 80 exercises NGINX's cap_net_bind_service.
+test-nginx-ingress:
+	@for f in $(FLAVORS); do \
+	  for ref in "debian-fips-nginx-ingress:test$$f" "debian-fips-nginx-ingress:latest$$f-dev"; do \
+	    echo "== $$ref"; \
+	    docker run --rm --sysctl net.ipv4.ip_unprivileged_port_start=1024 --entrypoint sh \
+	      -v "$(CURDIR)/tests:/tests:ro" "$$ref" -c '/tests/base.sh && /tests/nginx-ingress.sh' || exit 1; \
+	  done; \
+	done
+
+# The published distroless images must have no shell and run as nonroot
+# (UID 65532; the ingress controller keeps upstream's UID 101).
 distroless:
-	@for image in debian-fips-base debian-fips-node debian-fipsbase-bun debian-fips-python debian-fips-dotnet debian-fips-java; do \
+	@for image in debian-fips-base debian-fips-node debian-fipsbase-bun debian-fips-python debian-fips-dotnet debian-fips-java debian-fips-nginx-ingress; do \
+	  expected=65532:65532; \
+	  [ "$$image" = debian-fips-nginx-ingress ] && expected=101; \
 	  for tag in latest latest-pqc; do \
 	    ref="$$image:$$tag"; \
 	    if docker run --rm --entrypoint /bin/sh "$$ref" -c true >/dev/null 2>&1; then \
 	      echo "FAIL: $$ref has a shell"; exit 1; fi; \
 	    user="$$(docker inspect -f '{{.Config.User}}' "$$ref")"; \
-	    [ "$$user" = "65532:65532" ] || { echo "FAIL: $$ref runs as '$$user'"; exit 1; }; \
-	    echo "PASS: $$ref has no shell and runs as 65532"; \
+	    [ "$$user" = "$$expected" ] || { echo "FAIL: $$ref runs as '$$user'"; exit 1; }; \
+	    echo "PASS: $$ref has no shell and runs as $$expected"; \
 	  done; \
 	done
 

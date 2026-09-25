@@ -3,7 +3,8 @@
 [![build](https://github.com/worlddrknss/debian-fips-140-3/actions/workflows/build.yml/badge.svg)](https://github.com/worlddrknss/debian-fips-140-3/actions/workflows/build.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/worlddrknss/debian-fips-140-3/badge)](https://scorecard.dev/viewer/?uri=github.com/worlddrknss/debian-fips-140-3)
 
-Debian trixie container images for Go, Node.js, Python, .NET and Java whose cryptography runs
+Debian trixie container images for Go, Node.js, Python, .NET, Java and the F5 NGINX Ingress
+Controller whose cryptography runs
 through FIPS 140-3 validated modules. Each image is configured to reject non-approved
 algorithms and allow only 256-bit TLS ciphers (the CJIS Security Policy minimum). Every
 enforcement claim below is checked by the test suite on every build. Everything is built from
@@ -28,6 +29,7 @@ build attestation.
 | `debian-fips-dotnet` | ASP.NET Core 10 / .NET 10 SDK | OpenSSL FIPS provider (from the base) | as base |
 | `debian-fips-java` | OpenJDK 21 (Debian) | Bouncy Castle FIPS Java API (BC-FJA) 2.1.1 | Validated (interim), [#4943](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4943) |
 | `debian-fips-go` | Go 1.27 toolchain | Go Cryptographic Module v1.0.0 | Validated, [#5247](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/5247) |
+| `debian-fips-nginx-ingress` | F5 NGINX Ingress Controller 5.6 (NGINX OSS 1.31) | NGINX: OpenSSL FIPS provider (from the base); controller: Go Cryptographic Module | as base / #5247 |
 | `debian-fipsbase-bun` | Bun | **None for Bun's own crypto** (BoringSSL, not validated) | n/a |
 
 All images are published for `linux/amd64` and `linux/arm64` at
@@ -64,6 +66,7 @@ Approximate sizes (linux/arm64):
 | node | 142 MB | 257 MB |
 | dotnet | 176 MB | 818 MB (SDK) |
 | java | 229 MB | 420 MB (JDK) |
+| nginx-ingress | 131 MB | 343 MB (all modules) |
 | go | use `debian-fips-base` (16 MB) | 346 MB (toolchain) |
 
 ## Usage
@@ -115,6 +118,7 @@ of both provider versions.
 | dotnet | MD5, HMAC-MD5 and 3DES encryption are rejected. `SslStream` negotiates AES-256 and refuses AES-128-only servers. |
 | java | The only providers are BCFIPS, BCJSSE and an entropy provider; BC is in approved-only mode. MD5, HMAC-MD5, SHA1PRNG and 3DES encryption are rejected. TLS (BCJSSE) negotiates AES-256 and refuses AES-128-only servers. |
 | go | Binaries build with `GOFIPS140`, run in FIPS mode and reject MD5 on the distroless base. |
+| nginx-ingress | NGINX runs on the system OpenSSL; the controller is built with `GOFIPS140`; every shipped module loads. Client TLS negotiates AES-256 and refuses AES-128-only clients; backend TLS refuses an AES-128-only upstream (502). On `-pqc`: hybrid `X25519MLKEM768`. NGINX binds port 80 as UID 101 with privileged ports restricted. |
 | bun | Documents the boundary: `bun` still computes MD5 (see [bun](#bun)). |
 | all distroless | No shell; runs as 65532. |
 
@@ -144,9 +148,19 @@ Read these before relying on the images for compliance.
 - **Java:** every JVM prints `Picked up JAVA_TOOL_OPTIONS: ...` on stderr, because that is how
   the FIPS providers are loaded. JAAS, Kerberos and PKCS#11 aren't available, since their JDK
   providers are removed. SHA-1 signatures are rejected in TLS and certificate paths.
+- **NGINX Ingress:** the controller's API-key authentication policy hashes keys with njs's
+  built-in SHA-256, not the FIPS module. Setting `ssl-ciphers` in the controller's ConfigMap
+  replaces the AES-256 default for client TLS 1.2, and backend TLS 1.2 is fixed to AES-256-GCM
+  regardless of a policy's `ciphers`. The `-dev` variant's `xslt` module links `libgcrypt`, a
+  non-validated library used only by EXSLT crypto functions; distroless leaves `xslt` out. The
+  image has been tested standalone, not against a live cluster.
 - **The `-pqc` provider (3.5.4) isn't validated yet** (see [Tags](#tags)).
 - **`-dev` images include apt**, which verifies repository signatures with `sqv` (nettle).
-  That's crypto outside the FIPS boundary, used only when packages are installed.
+  That's crypto outside the FIPS boundary, used only when packages are installed. apt's TLS
+  does run under the FIPS provider: over `https`, repositories whose Release files still list MD5
+  checksums (nginx.org, for example) fail with `digital envelope routines::unsupported`, because
+  apt's MD5 attempt is refused. Use such repositories over `http`, as Debian's own sources are;
+  apt authenticates packages by the repository signature, not by TLS.
 
 ### CJIS
 
@@ -252,6 +266,27 @@ The toolchain image sets
 in FIPS mode, and `CGO_ENABLED=0`, so they're static. Copy them onto the distroless base, which
 sets `GODEBUG=fips140=only`. `git` isn't included; modules come through `GOPROXY`.
 
+### nginx-ingress
+
+The [F5 NGINX Ingress Controller](https://github.com/nginx/kubernetes-ingress) (NGINX OSS),
+built from its source release following upstream's Debian image, with these differences:
+
+- The controller is compiled by `debian-fips-go`, so its TLS (to the Kubernetes API) uses the Go
+  Cryptographic Module.
+- NGINX comes from nginx.org's Debian packages (signing keys checked against their published
+  fingerprints) and links Debian's OpenSSL, so client and backend TLS run through the base's FIPS
+  provider. The `-pqc` tags negotiate hybrid ML-KEM key exchange by default.
+- [`nginx.tmpl.patch`](images/nginx-ingress/nginx.tmpl.patch) makes the main template default
+  `ssl_ciphers` to AES-256-GCM (NGINX's own default allows AES-128 for TLS 1.2) and include
+  [`fips-tls-policy.conf`](images/nginx-ingress/fips-tls-policy.conf), which holds backend TLS
+  1.2 to AES-256-GCM. TLS 1.3 follows the system policy in both directions.
+- NGINX Agent isn't included.
+
+Distroless ships NGINX with the modules the controller loads (`njs`, `otel`, `acme`); `-dev` has
+every upstream module. Both run as UID 101 like upstream, with `cap_net_bind_service` on NGINX
+and the controller, so they bind ports 80 and 443 without root. Deploy with the upstream Helm
+chart or manifests, overriding the image.
+
 ### bun
 
 Published as `debian-fipsbase-bun` because **only the base is FIPS-configured, not Bun.** Bun
@@ -283,7 +318,9 @@ distroless image plus busybox and the `openssl` CLI.
 - [update-pins.yml](.github/workflows/update-pins.yml) opens a pull request weekly when a pinned
   upstream release has a newer version (Debian digest, Node.js, npm, Go, Bun, .NET, Bouncy Castle
   TLS). **The OpenSSL FIPS provider and `bc-fips` versions are never changed automatically**,
-  since only certified versions belong there. Python and OpenJDK update through apt.
+  since only certified versions belong there. The NGINX Ingress Controller and NGINX versions are
+  bumped by hand, since the template patch has to be checked against each release. Python and
+  OpenJDK update through apt.
 - [codeql.yml](.github/workflows/codeql.yml) and [scorecard.yml](.github/workflows/scorecard.yml)
   check the workflows and the repository's security practices; Dependabot keeps the pinned
   actions current.

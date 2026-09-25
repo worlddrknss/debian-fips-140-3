@@ -94,6 +94,16 @@ variable "JAVA_VERSION" {
   default = "21"
 }
 
+# F5 NGINX Ingress Controller source release and the NGINX OSS version its
+# Debian image uses (nginx.org mainline packages).
+variable "NIC_VERSION" {
+  default = "5.6.3"
+}
+
+variable "NGINX_VERSION" {
+  default = "1.31.6"
+}
+
 # Python comes from Debian (security updates arrive through apt), so this is
 # only the version tag. It must match trixie's python3; the build fails
 # otherwise.
@@ -188,13 +198,13 @@ function "base_args" {
 
 # Published images.
 group "default" {
-  targets = ["base", "go", "node", "bun", "python", "dotnet", "java"]
+  targets = ["base", "go", "node", "bun", "python", "dotnet", "java", "nginx-ingress"]
 }
 
 # Distroless variants plus busybox and the openssl CLI, for running tests/.
 # Built and loaded in CI, never pushed.
 group "test" {
-  targets = ["base-test", "node-test", "bun-test", "python-test", "dotnet-test", "java-test"]
+  targets = ["base-test", "node-test", "bun-test", "python-test", "dotnet-test", "java-test", "nginx-ingress-test"]
 }
 
 # ---------------------------------------------------------------------------
@@ -465,4 +475,53 @@ target "java-test" {
   tags       = ["debian-fips-java:test${flavor}"]
   cache-from = cache_from("java${flavor}-test")
   cache-to   = cache_to("java${flavor}-test")
+}
+
+# ---------------------------------------------------------------------------
+# nginx-ingress: F5 NGINX Ingress Controller (NGINX OSS). The controller is
+# compiled by the go target; NGINX runs on the base in the matching flavor.
+# ---------------------------------------------------------------------------
+
+target "nginx-ingress" {
+  name = "nginx-ingress${flavor}${variant}"
+  matrix = {
+    flavor  = FLAVORS
+    variant = VARIANTS
+  }
+  context    = "."
+  dockerfile = "images/nginx-ingress/Dockerfile"
+  target     = stage(variant)
+  contexts   = merge(base_contexts(flavor), { fips-go = "target:go" })
+  args = merge(base_args(), {
+    GO_IMAGE      = "fips-go"
+    NIC_VERSION   = NIC_VERSION
+    NGINX_VERSION = NGINX_VERSION
+  })
+  tags       = tags("debian-fips-nginx-ingress", NIC_VERSION, "${flavor}${variant}")
+  output     = output("debian-fips-nginx-ingress")
+  attest     = attest()
+  cache-from = cache_from("nginx-ingress${flavor}${variant}")
+  cache-to   = cache_to("nginx-ingress${flavor}${variant}")
+}
+
+target "nginx-ingress-test" {
+  name = "nginx-ingress${flavor}-test"
+  matrix = {
+    flavor = FLAVORS
+  }
+  context    = "."
+  dockerfile = "images/nginx-ingress/Dockerfile"
+  target     = "test"
+  contexts = merge(base_contexts(flavor), {
+    fips-base-test = "target:base${flavor}-test"
+    fips-go        = "target:go"
+  })
+  args = merge(base_args(), {
+    GO_IMAGE      = "fips-go"
+    NIC_VERSION   = NIC_VERSION
+    NGINX_VERSION = NGINX_VERSION
+  })
+  tags       = ["debian-fips-nginx-ingress:test${flavor}"]
+  cache-from = cache_from("nginx-ingress${flavor}-test")
+  cache-to   = cache_to("nginx-ingress${flavor}-test")
 }
