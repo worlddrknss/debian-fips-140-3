@@ -8,12 +8,13 @@
 # by default. GODEBUG=fips140=only additionally makes non-approved algorithms
 # fail at runtime.
 #
-# Binaries built here are static (CGO_ENABLED=0) and can run on the base image.
+# Binaries built here are static (CGO_ENABLED=0) and run on the distroless
+# base image (debian-fips-base:latest). This image builds on the -dev base.
 #
 # git is not included (it pulls in curl and its CVEs). Modules come through
 # GOPROXY; images that fetch private modules over VCS should install git.
 
-ARG BASE_IMAGE=debian-fips-base:latest
+ARG BASE_IMAGE=debian-fips-base:latest-dev
 ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 
 # ---------------------------------------------------------------------------

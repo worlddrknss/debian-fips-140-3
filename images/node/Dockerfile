@@ -1,14 +1,21 @@
 # syntax=docker/dockerfile:1
 
-# Node.js on the FIPS base image.
+# Node.js on the FIPS base images.
 #
 # Uses the official Node.js release binary. It bundles its own OpenSSL 3.x,
 # which loads the base image's FIPS provider (through OPENSSL_MODULES, set in
 # the base) and reads /etc/ssl/openssl.cnf (nodejs_conf section), so crypto,
 # tls and https run through the FIPS provider. If the provider can't be
 # loaded, Node.js aborts at startup instead of running without FIPS.
+#
+# Targets:
+#   runtime  Distroless base + node. No npm, shell or apt. Published as latest.
+#   dev      Dev base + node, npm and corepack. Published as latest-dev.
+#   test     runtime + busybox + openssl CLI for the test suite. Not published.
 
 ARG BASE_IMAGE=debian-fips-base:latest
+ARG BASE_DEV_IMAGE=debian-fips-base:latest-dev
+ARG BASE_TEST_IMAGE=debian-fips-base:test
 ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 
 # ---------------------------------------------------------------------------
@@ -40,16 +47,18 @@ RUN case "${TARGETARCH}" in \
  && echo "${sha256}  /tmp/node.tar.xz" | sha256sum -c - \
  && mkdir /out \
  && tar -xJf /tmp/node.tar.xz -C /out --strip-components=1 \
-      --exclude='*/CHANGELOG.md' --exclude='*/README.md' --exclude='*/LICENSE' \
+      --exclude='*/CHANGELOG.md' --exclude='*/README.md' \
       --exclude='*/share/doc' --exclude='*/share/man' \
-      --exclude='*/include'
+      --exclude='*/include' \
+ && mkdir -p /out/share/doc/node \
+ && mv /out/LICENSE /out/share/doc/node/LICENSE
 # C headers (include/) are left out: they're only for compiling native addons,
 # which needs build tools this image doesn't have, and node-gyp downloads them.
 
 # ---------------------------------------------------------------------------
-# Runtime image
+# dev: node, npm and corepack on the dev base.
 # ---------------------------------------------------------------------------
-FROM ${BASE_IMAGE}
+FROM ${BASE_DEV_IMAGE} AS dev
 
 ARG NODE_VERSION=24.21.0
 # The npm bundled with Node.js lags behind npm's own security fixes, so a newer
@@ -57,7 +66,7 @@ ARG NODE_VERSION=24.21.0
 ARG NPM_VERSION=11.20.0
 
 LABEL org.opencontainers.image.title="debian-fips-node" \
-      org.opencontainers.image.description="Node.js ${NODE_VERSION} running its crypto through the OpenSSL FIPS provider"
+      org.opencontainers.image.description="Node.js ${NODE_VERSION} running its crypto through the OpenSSL FIPS provider (dev variant: npm, shell and apt)"
 
 COPY --from=node-download /out/ /usr/local/
 
@@ -70,3 +79,49 @@ RUN node -e 'if (require("crypto").getFips() !== 1) process.exit(1)' \
  && npm install -g "npm@${NPM_VERSION}" \
  && npm cache clean --force \
  && rm -rf /root/.npm
+
+# ---------------------------------------------------------------------------
+# rootfs: the node binary and the C++ runtime it links against.
+# ---------------------------------------------------------------------------
+FROM ${BASE_DEV_IMAGE} AS rootfs
+
+COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
+RUN install-packages /rootfs libstdc++6
+
+COPY --from=node-download /out/bin/node /rootfs/usr/local/bin/node
+COPY --from=node-download /out/share/doc/node/LICENSE /rootfs/usr/local/share/doc/node/LICENSE
+
+# ---------------------------------------------------------------------------
+# runtime: distroless.
+# ---------------------------------------------------------------------------
+FROM ${BASE_IMAGE} AS runtime
+
+ARG NODE_VERSION=24.21.0
+
+LABEL org.opencontainers.image.title="debian-fips-node" \
+      org.opencontainers.image.description="Distroless Node.js ${NODE_VERSION} running its crypto through the OpenSSL FIPS provider"
+
+COPY --from=rootfs /rootfs/ /
+
+ENV NODE_OPTIONS="--tls-min-v1.2 --tls-cipher-list=TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+
+CMD ["node"]
+
+# ---------------------------------------------------------------------------
+# test: runtime + busybox + openssl CLI. Never published.
+# ---------------------------------------------------------------------------
+FROM ${BASE_TEST_IMAGE} AS test-tools
+
+FROM runtime AS test
+
+COPY --from=test-tools /bin/busybox /bin/busybox
+COPY --from=test-tools /usr/bin/openssl /usr/bin/openssl
+
+USER 0
+RUN ["/bin/busybox", "--install", "-s", "/bin"]
+USER 65532:65532
+
+# ---------------------------------------------------------------------------
+# Default target for a plain `docker build`: the distroless runtime.
+# ---------------------------------------------------------------------------
+FROM runtime

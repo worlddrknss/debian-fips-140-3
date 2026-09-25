@@ -1,179 +1,300 @@
 # debian-fips-140-3
 
-A family of `debian:trixie-slim` container images where crypto runs through a FIPS 140-3 module,
-configured for the CJIS Security Policy's 256-bit minimum. Everything is built from open-source
-components.
+[![build](https://github.com/worlddrknss/debian-fips-140-3/actions/workflows/build.yml/badge.svg)](https://github.com/worlddrknss/debian-fips-140-3/actions/workflows/build.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/worlddrknss/debian-fips-140-3/badge)](https://scorecard.dev/viewer/?uri=github.com/worlddrknss/debian-fips-140-3)
 
-| Image | Contents | FIPS module |
+Debian trixie container images for Go, Node.js, Python, .NET and Java whose cryptography runs
+through FIPS 140-3 validated modules. Each image is configured to reject non-approved
+algorithms and allow only 256-bit TLS ciphers (the CJIS Security Policy minimum). Every
+enforcement claim below is checked by the test suite on every build. Everything is built from
+open-source components, and every image is published with an SBOM, SLSA provenance and a signed
+build attestation.
+
+> [!IMPORTANT]
+> **These images are not FIPS 140-3 certified, and nothing can make a container image
+> certified.** CMVP certificates cover cryptographic *modules*. These images *use* validated
+> modules, configured according to their security policies. Whether a system built on them is
+> compliant depends on how you deploy and operate it (see [Limitations](#limitations)). This
+> project isn't affiliated with or endorsed by NIST, the OpenSSL project, Debian, Bouncy Castle,
+> Microsoft or the Go team, and it comes with no warranty (see [LICENSE](LICENSE)).
+
+## Images
+
+| Image | Runtime | Cryptographic module | CMVP status |
+| --- | --- | --- | --- |
+| `debian-fips-base` | glibc + OpenSSL | OpenSSL FIPS provider 3.1.2 | Validated, [#4985](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4985) |
+| `debian-fips-node` | Node.js 24 | OpenSSL FIPS provider (from the base) | as base |
+| `debian-fips-python` | Python 3.13 (Debian) | OpenSSL FIPS provider (from the base) | as base |
+| `debian-fips-dotnet` | ASP.NET Core 10 / .NET 10 SDK | OpenSSL FIPS provider (from the base) | as base |
+| `debian-fips-java` | OpenJDK 21 (Debian) | Bouncy Castle FIPS Java API (BC-FJA) 2.1.1 | Validated (interim), [#4943](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4943) |
+| `debian-fips-go` | Go 1.27 toolchain | Go Cryptographic Module v1.0.0 | Validated, [#5247](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/5247) |
+| `debian-fipsbase-bun` | Bun | **None for Bun's own crypto** (BoringSSL, not validated) | n/a |
+
+All images are published for `linux/amd64` and `linux/arm64` at
+`ghcr.io/worlddrknss/<image>`.
+
+### Tags
+
+| Tag | Provider | Variant |
 | --- | --- | --- |
-| `debian-fips-base` | Debian slim with system OpenSSL locked to a FIPS provider | OpenSSL FIPS provider 3.5.4 (default) or 3.1.2 |
-| `debian-fips-go` | Base + Go toolchain that builds FIPS binaries | Go Cryptographic Module v1.0.0 ([CMVP #5247](https://go.dev/doc/security/fips140)) |
-| `debian-fips-node` | Base + Node.js compiled against the system OpenSSL | OpenSSL FIPS provider from the base |
-| `debian-fips-bun` | Base + Bun | **None for Bun's own crypto** (BoringSSL) |
+| `latest`, `<version>` | OpenSSL FIPS provider **3.1.2** (validated) | Distroless |
+| `latest-dev`, `<version>-dev` | 3.1.2 | Dev |
+| `latest-pqc`, `<version>-pqc` | OpenSSL FIPS provider **3.5.4**, adds ML-KEM, ML-DSA, SLH-DSA and hybrid PQC TLS. **In CMVP review, not yet validated.** | Distroless |
+| `latest-pqc-dev`, `<version>-pqc-dev` | 3.5.4 | Dev |
 
-## OpenSSL FIPS provider versions
+Each build is also tagged `YYYYMMDD-<commit>` (plus the same suffixes), so you can pin a build.
+For production, pin by digest.
 
-| `OPENSSL_FIPS_VERSION` | CMVP status | PQC |
+- **Distroless** images contain only what the runtime needs: glibc, OpenSSL and the FIPS
+  provider, CA certificates, tzdata and the runtime. They have no shell, package manager or
+  coreutils, and run as `nonroot` (UID/GID 65532).
+- **Dev** images are Debian trixie-slim with the same FIPS configuration plus bash and apt, and
+  the build tools for their language (npm, pip, the .NET SDK, the JDK). They run as root.
+
+The `-pqc` images exist for testing post-quantum cryptography ahead of certification. Don't
+describe them as FIPS 140-3 validated until OpenSSL 3.5.4 receives its certificate.
+
+Approximate sizes (linux/arm64):
+
+| Image | Distroless | Dev |
 | --- | --- | --- |
-| `3.5.4` (default) | Submitted for FIPS 140-3, **in CMVP review, not yet validated** | ML-KEM, ML-DSA, SLH-DSA, hybrid TLS (`X25519MLKEM768`, `SecP256r1MLKEM768`) |
-| `3.1.2` | FIPS 140-3 validated ([cert #4985](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4985)) | No |
+| base | 16 MB | 108 MB |
+| python | 44 MB | 158 MB |
+| bun | 95 MB | 187 MB |
+| node | 142 MB | 257 MB |
+| dotnet | 176 MB | 818 MB (SDK) |
+| java | 229 MB | 420 MB (JDK) |
+| go | use `debian-fips-base` (16 MB) | 346 MB (toolchain) |
 
-**Accepted risk:** the default images use 3.5.4, which is in CMVP review and not yet validated.
-CJIS (SC-13) requires FIPS 140-3 *certified* modules, so until 3.5.4 receives its certificate,
-don't describe the default images as validated. They need no code changes once it's certified.
-If you need a validated module today, build with `OPENSSL_FIPS_VERSION=3.1.2`.
+## Usage
 
-Each image records its module in labels (`fips.openssl.provider.cmvp`, `fips.go.module.cmvp`,
-`fips.bun.crypto`), so you can check an image with `docker inspect`.
+Build in a `-dev` image, ship on distroless:
 
-## Build and test
+```dockerfile
+FROM ghcr.io/worlddrknss/debian-fips-node:latest-dev AS build
+WORKDIR /app
+COPY . .
+RUN npm ci && npm run build
+
+FROM ghcr.io/worlddrknss/debian-fips-node:latest
+COPY --from=build --chown=65532:65532 /app /app
+CMD ["node", "/app/server.js"]
+```
+
+Distroless images have no shell, so `CMD` and `ENTRYPOINT` must use the exec (JSON) form, and
+anything that needs `RUN` (creating users, changing permissions) happens in a `-dev` stage and is
+copied in.
+
+## Verifying an image
 
 ```sh
-make build        # docker buildx bake --load: base, go, node and bun
-make test         # run every test suite in its image
-make lint         # hadolint, shellcheck, actionlint, markdownlint, gofmt/vet
+# Build provenance, signed through GitHub's Sigstore instance
+gh attestation verify oci://ghcr.io/worlddrknss/debian-fips-base:latest --owner worlddrknss
 
-# Validated 3.1.2 provider instead of 3.5.4
-OPENSSL_FIPS_VERSION=3.1.2 docker buildx bake --load
+# SBOM (SPDX) attached at build time
+docker buildx imagetools inspect ghcr.io/worlddrknss/debian-fips-base:latest \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
+
+# Which FIPS module an image uses
+docker inspect ghcr.io/worlddrknss/debian-fips-base:latest --format '{{ json .Config.Labels }}'
 ```
 
-The go, node and bun images build `FROM` the base through a named bake context, so one `bake`
-call builds the whole family. Versions are set in
-[docker-bake.hcl](docker-bake.hcl). Each Dockerfile pins the SHA-256 of every download it makes.
+Every published build also gets a [GitHub Release](https://github.com/worlddrknss/debian-fips-140-3/releases)
+listing each image's digest and FIPS module, with SPDX SBOMs attached.
 
-## CI
+## What is enforced
 
-[.github/workflows/build.yml](.github/workflows/build.yml) runs on every pull request, on `main`,
-and weekly to pick up Debian security updates. The base image's apt layer is keyed to the ISO
-week (`APT_REFRESH`), so the first build each week reruns `apt-get upgrade` instead of reusing
-the cached layer:
+Each item is checked by the [test suite](tests/) against both the distroless and dev variants
+of both provider versions.
 
-1. **Lint** everything (`make lint`).
-2. **Build and test** all four images on native amd64 and arm64 runners.
-3. **Scan** each image with Grype. Fixable vulnerabilities are listed in the job summary and in
-   the repository's code scanning alerts. Findings are report-only and never fail the build.
-4. On `main`: **publish** multi-arch images to `ghcr.io/<owner>/debian-fips-{base,go,node,bun}`,
-   tagged `latest`, the version, and a unique `YYYYMMDD-<sha>` build tag. Each image carries an
-   SBOM and SLSA provenance, plus a GitHub build attestation signed through Sigstore:
+| Image | Checks |
+| --- | --- |
+| base (and every image built on it) | Only the `fips` and `base` OpenSSL providers are loaded; the legacy provider isn't installed. MD5 and RSA-1024 are rejected. TLS 1.0/1.1 are refused; TLS allows only AES-256-GCM. Every Debian package ships its copyright file. On `-pqc`: ML-DSA, ML-KEM and hybrid `SecP256r1MLKEM768` TLS. |
+| node | `crypto.getFips() === 1`. Node refuses to start if the provider can't load. MD5 and ChaCha20-Poly1305 are rejected. TLS negotiates AES-256 and refuses AES-128-only servers. |
+| python | `hashlib`/`hmac` run in OpenSSL; MD5 and BLAKE2 are rejected for security use. `ssl` negotiates AES-256 and refuses AES-128-only servers. The `cryptography` wheel's bundled OpenSSL runs in FIPS mode. |
+| dotnet | MD5, HMAC-MD5 and 3DES encryption are rejected. `SslStream` negotiates AES-256 and refuses AES-128-only servers. |
+| java | The only providers are BCFIPS, BCJSSE and an entropy provider; BC is in approved-only mode. MD5, HMAC-MD5, SHA1PRNG and 3DES encryption are rejected. TLS (BCJSSE) negotiates AES-256 and refuses AES-128-only servers. |
+| go | Binaries build with `GOFIPS140`, run in FIPS mode and reject MD5 on the distroless base. |
+| bun | Documents the boundary: `bun` still computes MD5 (see [bun](#bun)). |
+| all distroless | No shell; runs as 65532. |
 
-   ```sh
-   gh attestation verify oci://ghcr.io/<owner>/debian-fips-base:latest --owner <owner>
-   ```
+## Limitations
 
-5. **Prune** the registry to the 5 newest builds of each image.
+Read these before relying on the images for compliance.
 
-[codeql.yml](.github/workflows/codeql.yml) scans the workflows themselves, and Dependabot keeps
-the SHA-pinned actions current.
+- **Only the cryptography each image routes through its module is covered.** Code can bypass it:
+  Bun's BoringSSL, a Rust crate using `ring`, a Python package with its own crypto, and so on.
+- **Randomness comes from the host kernel.** The OpenSSL provider, the Go module and the Java
+  entropy provider all seed from the kernel, and a container can't turn on kernel FIPS mode
+  (`/proc/sys/crypto/fips_enabled`). For strict deployments, run on FIPS-enabled hosts, such as
+  FIPS node pools or a FIPS-validated host OS.
+- **Operational environment.** Each CMVP certificate lists the platforms the module was tested
+  on. Running on others relies on the CMVP rules for porting a module to a new environment,
+  which is the operator's responsibility, not this project's.
+- **The configuration can be undone.** Changing `OPENSSL_CONF`, `OPENSSL_MODULES`,
+  `GODEBUG=fips140`, `JAVA_TOOL_OPTIONS` or `NODE_OPTIONS`, or loading OpenSSL's `default`
+  provider in code, re-enables non-approved algorithms. Keep them as the images set them.
+- **Go TLS doesn't follow the 256-bit policy.** Go ignores `openssl.cnf` and doesn't let you
+  choose TLS 1.3 cipher suites, so a Go server negotiates AES-128 when a client offers it. For
+  traffic that must use 256-bit keys, terminate TLS in a proxy or mesh, or limit the service to
+  TLS 1.2 with AES-256 suites (which gives up TLS 1.3 and PQC key exchange).
+- **Python:** `usedforsecurity=False` deliberately still allows non-approved hashes, since FIPS
+  permits them for non-security uses. `python -S` and direct imports of the built-in hash
+  modules (`_md5`, ...) bypass the enforcement.
+- **Java:** every JVM prints `Picked up JAVA_TOOL_OPTIONS: ...` on stderr, because that is how
+  the FIPS providers are loaded. JAAS, Kerberos and PKCS#11 aren't available, since their JDK
+  providers are removed. SHA-1 signatures are rejected in TLS and certificate paths.
+- **The `-pqc` provider (3.5.4) isn't validated yet** (see [Tags](#tags)).
+- **`-dev` images include apt**, which verifies repository signatures with `sqv` (nettle).
+  That's crypto outside the FIPS boundary, used only when packages are installed.
 
-## Base image
+### CJIS
 
-1. Both stages start from `debian:trixie-slim` pinned by digest. A builder stage downloads the
-   provider source selected by `OPENSSL_FIPS_VERSION`, checks its pinned SHA-256, and builds it
-   with `./Configure enable-fips && make && make install_fips`, the steps the security policy
+The images implement the CJIS Security Policy's cryptographic minimums for data in transit
+(FIPS 140-3 validated modules, 256-bit symmetric keys) within the container, except as noted
+above. Everything else CJIS requires is outside an image: validated crypto on every hop that
+carries CJI (ingress, service mesh, databases, backups), AES-256 encryption at rest, MFA, audit
+log retention, account lockout and the rest of the policy.
+
+## Image details
+
+### base
+
+1. Every stage starts from `debian:trixie-slim`, pinned by digest. A builder stage downloads the
+   OpenSSL release for the selected provider, checks its pinned SHA-256, and builds it with
+   `./Configure enable-fips && make && make install_fips`, the steps the security policy
    requires.
-2. The runtime stage keeps Debian's system OpenSSL (3.5.x) and installs `fips.so` into its module
-   directory. Upstream OpenSSL supports a newer libcrypto loading an older validated provider.
-3. `/etc/ssl/openssl.cnf` activates only the `fips` and `base` providers and sets
-   `default_properties = fips=yes`, so non-approved algorithms (such as MD5) fail. Node.js reads
-   the same settings through the `nodejs_conf` section.
-4. The same file sets a system-wide TLS policy: TLS 1.2 minimum, and **AES-256-GCM only**
-   (`TLS_AES_256_GCM_SHA384` for TLS 1.3; ECDHE with AES-256-GCM for TLS 1.2). This meets the
-   CJIS 256-bit minimum for CJI in transit. Key exchange keeps OpenSSL's defaults, including the
-   hybrid ML-KEM groups.
-5. `fipsinstall -self_test_onload` makes the module run its integrity check and self-tests every
-   time it loads, so the image stays valid on any host. For 3.5.4, `-pedantic` also makes the
-   provider reject non-approved operations such as 3DES encryption, RSA PKCS#1 v1.5 padding and
-   TLS 1.2 without Extended Master Secret.
-6. The legacy provider (`legacy.so`: MD4, RC4, DES, Blowfish, ...) is deleted. `libssl3t64`
-   depends on its package, so a `dpkg` `path-exclude` rule keeps upgrades from restoring it.
-7. A `nonroot` user (UID/GID 65532) exists for workloads. The image still defaults to root so
-   downstream builds can install packages. Application images should end with `USER nonroot`.
+2. The `dev` stage keeps Debian's system OpenSSL (3.5.x) and installs `fips.so` into its module
+   directory. OpenSSL supports a newer libcrypto loading an older validated provider.
+3. [`openssl.cnf`](images/base/openssl.cnf) activates only the `fips` and `base` providers, sets
+   `default_properties = fips=yes`, and sets the system TLS policy (TLS 1.2+, AES-256-GCM only,
+   OpenSSL's default key exchange groups).
+4. `fipsinstall -self_test_onload` makes the module run its integrity check and self-tests every
+   time it loads. For 3.5.4, `-pedantic` also rejects operations the policy doesn't approve,
+   such as 3DES encryption, RSA PKCS#1 v1.5 padding and TLS 1.2 without Extended Master Secret.
+5. The legacy provider (`legacy.so`: MD4, RC4, DES, ...) is deleted, and a `dpkg` rule keeps
+   package upgrades from restoring it.
+6. `OPENSSL_CONF` and `OPENSSL_MODULES` are set, so software that bundles its own OpenSSL 3 (the
+   official Node.js binaries, Python `cryptography` wheels) loads the same provider and policy.
+   `GODEBUG=fips140=only` is set for Go binaries.
+7. The distroless variant is assembled from the dev stage's patched packages by
+   [`install-packages.sh`](images/rootfs/install-packages.sh). Each package is recorded in
+   `/var/lib/dpkg/status.d/`, so scanners and SBOM tools still see Debian packages and versions,
+   and keeps its copyright file. glibc's `gconv` modules (legacy iconv character sets, ~20 MB)
+   are left out.
 
-## Go image
+### node
 
-Go doesn't use OpenSSL. It has its own validated module. The image sets:
-
-- `GOFIPS140=certified`, so every binary is built against the certified module snapshot (v1.0.0)
-  and runs in FIPS mode by default.
-- `GODEBUG=fips140=only`, so non-approved algorithms fail at runtime.
-- `CGO_ENABLED=0`, so binaries are static and can run on the base image.
-
-The toolchain is downloaded in a separate build stage, so neither `curl` nor `git` is in the
-image. Modules come through `GOPROXY`. If a build fetches private modules straight from Git,
-install `git` in that build stage.
-
-For a multi-stage build, compile in `debian-fips-go` and copy the binary into `debian-fips-base`.
-Set `ENV GODEBUG=fips140=only` in the runtime stage too, or add `godebug fips140=only` to
-`go.mod`, because `GOFIPS140` alone turns FIPS mode on but doesn't block non-approved algorithms.
-
-**Go TLS doesn't follow the 256-bit policy.** Go ignores `openssl.cnf`, and it doesn't let you
-choose TLS 1.3 cipher suites. A Go server negotiates `TLS_AES_128_GCM_SHA256` whenever the client
-offers it. For Go services that carry CJI, either terminate TLS in a FIPS proxy or service mesh,
-or limit the service to TLS 1.2 with AES-256 suites:
-
-```go
-cfg := &tls.Config{
-    MaxVersion: tls.VersionTLS12,
-    CipherSuites: []uint16{
-        tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-        tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-    },
-}
-```
-
-Limiting to TLS 1.2 gives up TLS 1.3 and hybrid PQC key exchange.
-
-## Node.js image
-
-The image uses the official Node.js release binary, pinned by checksum. It bundles its own
-OpenSSL 3, which the base image points at the FIPS provider and `/etc/ssl/openssl.cnf` through
-`OPENSSL_MODULES` and `OPENSSL_CONF`. `crypto`, `tls` and `https` all run through the FIPS
-provider (`crypto.getFips() === 1`). The certified boundary is the provider (`fips.so`), and the
-libcrypto that loads it is outside that boundary whether it's Debian's or Node's bundled copy.
-
-If the provider can't be loaded, Node.js aborts at startup rather than running without FIPS. The
-C headers (`include/`) are left out to save 65 MB; `node-gyp` downloads them if you compile
-native add-ons.
-
-Node.js sets its own TLS cipher list and ignores the system one, so the image repeats the 256-bit
-policy in `NODE_OPTIONS`. If you set `NODE_OPTIONS` in a downstream image, keep these flags:
+The official Node.js release binary, pinned by checksum. Its bundled OpenSSL 3 loads the base
+image's FIPS provider and policy through `OPENSSL_MODULES` and `OPENSSL_CONF`. Node.js sets its
+own TLS cipher list, so the 256-bit policy is repeated in `NODE_OPTIONS`; keep these flags if you
+set `NODE_OPTIONS`:
 
 ```sh
 --tls-min-v1.2 --tls-cipher-list=TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
 ```
 
-## Bun image
+Distroless ships only `node`. npm (pinned to a patched npm 11) and corepack are in `-dev`. C
+headers are left out; `node-gyp` downloads them when compiling native add-ons.
 
-`debian-fips-bun` is the base image with Bun added, for projects that run on Bun. It doesn't
-include Node.js.
+### python
 
-**It is not a FIPS runtime for Bun.** Bun builds BoringSSL into its binary and ignores the system
-OpenSSL, so any crypto Bun runs (TLS, `fetch` over HTTPS, `node:crypto`, WebCrypto) is outside
-the FIPS boundary. The 256-bit TLS policy doesn't apply to it either. The test suite confirms this
-by checking that `bun` still computes MD5. Anything else in the image that uses the system
-OpenSSL is still FIPS-enforced.
+Debian's `python3`, which links the system OpenSSL. On its own, CPython falls back to its
+built-in (non-validated) hash implementations for any hash OpenSSL refuses, so `hashlib.md5()`
+would still work. [`sitecustomize.py`](images/python/sitecustomize.py) closes that gap: security
+use of `hashlib` and `hmac` goes through OpenSSL or raises `ValueError`. Distroless has no pip;
+build a virtual environment in `-dev` and copy it (it uses `/usr/bin/python3`, which both
+variants share).
 
-Workloads that need FIPS, including anything that handles CJI, should run on `debian-fips-node`.
+### dotnet
 
-## Scope and caveats
+The ASP.NET Core runtime (which includes the .NET runtime) and ICU in distroless, and the .NET
+SDK in `-dev`, both pinned by SHA-512. On Linux, .NET performs its cryptography through the
+system OpenSSL, so the provider and TLS policy apply directly. `ASPNETCORE_HTTP_PORTS=8080`,
+since the image runs as `nonroot`. The SDK's telemetry is turned off.
 
-- **Only software that uses the system OpenSSL, or the Go module in the Go image, is covered.**
-  Runtimes that bundle their own crypto (Bun, official Node.js binaries, Java JCE, Rust
-  `ring`/`rustls`) bypass it and each need their own FIPS setup.
-- **Downstream images must not override the FIPS configuration.** The `default` provider is
-  compiled into every libcrypto, so changing `OPENSSL_CONF` or `OPENSSL_MODULES`, or calling
-  `OSSL_PROVIDER_load(NULL, "default")`, re-enables non-approved algorithms. For Go, don't
-  override `GODEBUG=fips140`.
-- `apt` checks repository signatures with `sqv`, which uses nettle. That's crypto outside the
-  FIPS boundary, and it runs when packages are installed, not when your application runs.
-- **The host kernel is outside the image.** Both the OpenSSL provider and the Go module get
-  their randomness from the host kernel, and a container can't enable kernel FIPS mode
-  (`/proc/sys/crypto/fips_enabled`). For a strict deployment, run on FIPS-enabled hosts, such as
-  FIPS node pools or a FIPS-validated host OS.
-- **CJIS covers more than the images.** Every hop that carries CJI outside a physically secure
-  location (ingress, service mesh, databases, backups) needs FIPS 140-3 certified crypto with
-  256-bit keys, and CJI at rest needs AES-256. MFA, audit log retention and account lockout are
-  platform controls.
-- The 3.5.4 security policy isn't public yet. It's built with the standard `./Configure enable-fips`
-  and OS entropy (not `enable-fips-jitter`). When the certificate is issued, check the build and
-  `fipsinstall` options against its security policy.
+### java
+
+Debian's OpenJDK 21 (headless JRE in distroless, JDK in `-dev`). BC-FJA 2.1.1 is certified for
+Java 8, 11, 17 and 21, so the image stays on 21. [`configure-fips.sh`](images/java/configure-fips.sh)
+replaces the JDK's providers with:
+
+1. `BCFIPS`, the certified module (`bc-fips` 2.1.1), in approved-only mode;
+2. `BCJSSE`, Bouncy Castle's TLS provider, running on BCFIPS;
+3. `FIPSEntropy`, a [small provider](images/java/entropy/fips/entropy/EntropyProvider.java)
+   that supplies kernel entropy to BCFIPS. BC-FJA would otherwise take its entropy from the
+   JDK's `SUN` provider, which also serves MD5 and other non-approved algorithms. This is the
+   approach the Bouncy Castle maintainers suggest in
+   [bc-java discussion #1910](https://github.com/bcgit/bc-java/discussions/1910).
+
+The trust store is converted to BCFKS (`/etc/ssl/certs/java/cacerts.bcfks`, password
+`changeit`, which protects only its integrity). All settings are applied through
+`JAVA_TOOL_OPTIONS`.
+
+### go
+
+A Go toolchain image (one variant), downloaded and pinned by checksum. Go programs compile to
+static binaries that need no Go runtime, so their distroless image is `debian-fips-base`:
+
+```dockerfile
+FROM ghcr.io/worlddrknss/debian-fips-go:latest AS build
+WORKDIR /src
+COPY . .
+RUN go build -o /out/app .
+
+FROM ghcr.io/worlddrknss/debian-fips-base:latest
+COPY --from=build /out/app /app
+CMD ["/app"]
+```
+
+The toolchain image sets
+`GOFIPS140=certified`, so binaries build against the certified module snapshot (v1.0.0) and run
+in FIPS mode, and `CGO_ENABLED=0`, so they're static. Copy them onto the distroless base, which
+sets `GODEBUG=fips140=only`. `git` isn't included; modules come through `GOPROXY`.
+
+### bun
+
+Published as `debian-fipsbase-bun` because **only the base is FIPS-configured, not Bun.** Bun
+builds BoringSSL into its binary and ignores the system OpenSSL, so its TLS, `fetch`,
+`node:crypto` and WebCrypto are outside the FIPS boundary, and the 256-bit TLS policy doesn't
+apply to them. Use it for projects that run on Bun where that's acceptable. Workloads that need
+FIPS should run on `debian-fips-node`.
+
+## Building and testing
+
+```sh
+make build   # docker buildx bake --load: every published image plus the test images
+make test    # every test suite against the distroless and dev variants of both providers
+make lint    # hadolint, shellcheck, actionlint, markdownlint, gofmt/vet
+```
+
+Versions live in [docker-bake.hcl](docker-bake.hcl), and every download is pinned by checksum.
+Distroless images have no shell to run tests in, so each has an unpublished `:test` variant: the
+distroless image plus busybox and the `openssl` CLI.
+
+## Updates and CI
+
+- [build.yml](.github/workflows/build.yml) builds and tests every image on native amd64 and
+  arm64 runners for each pull request, on `main`, and weekly. The weekly build reruns
+  `apt-get upgrade`, so Debian security fixes land within a week. Images are scanned with Grype
+  (results in code scanning; report-only). On `main`, images are published with SBOMs,
+  provenance and attestations, a GitHub Release records the build, and the registry keeps the 20
+  newest tagged images per package (at least the 5 most recent builds).
+- [update-pins.yml](.github/workflows/update-pins.yml) opens a pull request weekly when a pinned
+  upstream release has a newer version (Debian digest, Node.js, npm, Go, Bun, .NET, Bouncy Castle
+  TLS). **The OpenSSL FIPS provider and `bc-fips` versions are never changed automatically**,
+  since only certified versions belong there. Python and OpenJDK update through apt.
+- [codeql.yml](.github/workflows/codeql.yml) and [scorecard.yml](.github/workflows/scorecard.yml)
+  check the workflows and the repository's security practices; Dependabot keeps the pinned
+  actions current.
+
+See [SECURITY.md](SECURITY.md) to report a vulnerability and [CHANGELOG.md](CHANGELOG.md) for
+changes.
+
+## License
+
+The build configuration in this repository is licensed under the [Apache License 2.0](LICENSE).
+The images contain third-party software under its own licenses: each Debian package's terms are
+in `/usr/share/doc/<package>/copyright`, the OpenSSL FIPS provider's in
+`/usr/share/doc/openssl-fips-provider/`, and Node.js, Bun, .NET and Bouncy Castle ship their
+license files alongside their binaries.

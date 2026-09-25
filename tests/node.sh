@@ -6,6 +6,11 @@ set -eu
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }
 
+# PQC checks only apply to a 3.5+ provider (the -pqc flavor).
+fips_version="$(openssl list -providers | grep -A2 "^  fips" | sed -n 's/^ *version: //p')"
+pqc=false
+[ "$(printf '%s\n3.5\n' "$fips_version" | sort -V | head -n1)" = "3.5" ] && pqc=true
+
 if OPENSSL_MODULES=/nonexistent node -e '' 2>/dev/null; then
   fail "Node started without the FIPS provider"
 fi
@@ -25,20 +30,27 @@ node -e 'require("crypto").createCipheriv("chacha20-poly1305", Buffer.alloc(32),
   2>/dev/null && fail "ChaCha20-Poly1305 succeeded"
 pass "non-approved cipher ChaCha20-Poly1305 is rejected"
 
-node -e '
+if $pqc; then
+  node -e '
 const { generateKeyPairSync, sign, verify } = require("crypto");
 const { privateKey, publicKey } = generateKeyPairSync("ml-dsa-65");
 const sig = sign(null, Buffer.from("x"), privateKey);
 if (!verify(null, Buffer.from("x"), publicKey, sig)) process.exit(1);
 ' || fail "ML-DSA-65 sign/verify failed"
-pass "ML-DSA-65 sign/verify works"
+  pass "ML-DSA-65 sign/verify works"
+fi
 
 tmp="$(mktemp -d)"
 trap 'kill $server_pid 2>/dev/null; rm -rf "$tmp"' EXIT
 openssl req -x509 -newkey EC -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
   -subj /CN=localhost -keyout "$tmp/tls.key" -out "$tmp/tls.crt" 2>/dev/null
+if $pqc; then
+  groups=X25519MLKEM768
+else
+  groups=P-256
+fi
 openssl s_server -quiet -accept 127.0.0.1:8443 -cert "$tmp/tls.crt" -key "$tmp/tls.key" \
-  -tls1_3 -groups X25519MLKEM768 >/dev/null 2>&1 &
+  -tls1_3 -groups "$groups" >/dev/null 2>&1 &
 server_pid=$!
 sleep 1
 tls_client='
@@ -52,8 +64,14 @@ s.on("error", e => { console.error(e.message); process.exit(1); });
 '
 
 result="$(node -e "$tls_client" 8443)" || fail "Node TLS 1.3 handshake failed"
-[ "${result#* }" = "X25519MLKEM768" ] || fail "Node negotiated group ${result#* }"
-pass "Node negotiates hybrid PQC TLS (X25519MLKEM768)"
+negotiated_group="${result#* }"
+if $pqc; then
+  [ "$negotiated_group" = "X25519MLKEM768" ] || fail "Node negotiated group $negotiated_group"
+  pass "Node negotiates hybrid PQC TLS (X25519MLKEM768)"
+else
+  [ "$negotiated_group" = "prime256v1" ] || fail "Node negotiated group $negotiated_group"
+  pass "Node negotiates TLS 1.3 over P-256"
+fi
 [ "${result% *}" = "TLS_AES_256_GCM_SHA384" ] || fail "Node negotiated ${result% *}"
 pass "Node negotiates AES-256 by default"
 

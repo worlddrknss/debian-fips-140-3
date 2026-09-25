@@ -1,6 +1,15 @@
 # syntax=docker/dockerfile:1
 
-# FIPS 140-3 Debian slim base image.
+# FIPS 140-3 Debian base images.
+#
+# Targets:
+#   runtime  Distroless: glibc, OpenSSL + the FIPS provider, CA certificates,
+#            tzdata and a nonroot user. No shell or package manager. Published
+#            as latest / <version>.
+#   dev      Debian slim with the same FIPS configuration plus a shell and apt,
+#            for build stages and debugging. Published as latest-dev.
+#   test     runtime + busybox + the openssl CLI, used only to run the test
+#            suite against the distroless filesystem. Never published.
 #
 # The system OpenSSL (libssl3t64 from Debian) is kept, but every algorithm
 # fetch is routed to a standalone OpenSSL FIPS provider. Newer libcrypto
@@ -53,7 +62,8 @@ RUN ./Configure enable-fips \
  && make -j"$(nproc)" \
  && make install_fips \
  && mkdir /fips \
- && cp "$(find /usr/local -name fips.so -path '*/ossl-modules/*')" /fips/fips.so
+ && cp "$(find /usr/local -name fips.so -path '*/ossl-modules/*')" /fips/fips.so \
+ && cp LICENSE.txt /fips/LICENSE.txt
 
 # -self_test_onload omits the install/MAC status indicators, so the module
 # runs its integrity check and KATs on every load. This keeps the generated
@@ -71,9 +81,9 @@ RUN case "${OPENSSL_FIPS_VERSION}" in \
       -self_test_onload ${extra_opts}
 
 # ---------------------------------------------------------------------------
-# Runtime image
+# dev: Debian slim with the FIPS configuration, a shell and apt.
 # ---------------------------------------------------------------------------
-FROM ${DEBIAN_IMAGE}
+FROM ${DEBIAN_IMAGE} AS dev
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -84,14 +94,14 @@ ARG OPENSSL_FIPS_CMVP
 ARG APT_REFRESH=""
 
 LABEL org.opencontainers.image.title="debian-fips-base" \
-      org.opencontainers.image.description="Debian slim with OpenSSL routed through the OpenSSL ${OPENSSL_FIPS_VERSION} FIPS provider" \
+      org.opencontainers.image.description="Debian slim with OpenSSL routed through the OpenSSL ${OPENSSL_FIPS_VERSION} FIPS provider (dev variant: shell and apt)" \
       org.opencontainers.image.source="https://github.com/worlddrknss/debian-fips-140-3" \
       fips.openssl.provider.version="${OPENSSL_FIPS_VERSION}" \
       fips.openssl.provider.cmvp="${OPENSSL_FIPS_CMVP}"
 
 # Unprivileged user for workloads (UID/GID 65532, the distroless convention).
-# The image still defaults to root so downstream builds can install packages;
-# application images should end with USER nonroot.
+# The dev image defaults to root so builds can install packages; the
+# distroless runtime defaults to this user.
 RUN groupadd --gid 65532 nonroot \
  && useradd --uid 65532 --gid 65532 --no-create-home --home-dir /nonexistent \
       --shell /usr/sbin/nologin nonroot
@@ -110,6 +120,7 @@ RUN echo "apt refresh: ${APT_REFRESH:-none}" \
 
 COPY --from=fips-builder /fips/fips.so /tmp/fips.so
 COPY --from=fips-builder /fips/fipsmodule.cnf /usr/lib/ssl/fipsmodule.cnf
+COPY --from=fips-builder /fips/LICENSE.txt /usr/share/doc/openssl-fips-provider/LICENSE.txt
 COPY images/base/openssl.cnf /etc/ssl/openssl.cnf
 
 # Install the provider into Debian's multiarch module directory, which is
@@ -124,8 +135,102 @@ RUN modules_dir="$(openssl version -m | sed -E 's/^MODULESDIR: "(.*)"$/\1/')" \
 # Applications that bundle their own OpenSSL 3 (the official Node.js binaries,
 # Python cryptography wheels, ...) look elsewhere for providers and config by
 # default. Pointing them here makes them load this FIPS provider and policy.
+#
+# GODEBUG=fips140=only makes Go binaries built with GOFIPS140 (see the Go
+# image) reject non-approved algorithms. It only affects Go programs.
 ENV OPENSSL_CONF=/etc/ssl/openssl.cnf \
-    OPENSSL_MODULES=/usr/lib/ossl-modules
+    OPENSSL_MODULES=/usr/lib/ossl-modules \
+    GODEBUG=fips140=only
 
 # Restore the default shell so images built FROM this one aren't affected.
 SHELL ["/bin/sh", "-c"]
+
+# ---------------------------------------------------------------------------
+# rootfs: assemble the distroless filesystem from dev's patched packages.
+# ---------------------------------------------------------------------------
+FROM dev AS rootfs
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# netbase provides /etc/services and /etc/protocols; busybox-static is only
+# for the test image and is not copied into the rootfs.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends netbase busybox-static \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
+
+# openssl-provider-legacy is deliberately absent: libssl3t64 depends on it,
+# but its module is removed and nothing in the rootfs needs it. gcc-*-base
+# only carries the copyright file libgcc-s1 (and libstdc++6) point to.
+RUN install-packages /rootfs \
+      base-files netbase tzdata ca-certificates \
+      libc6 libgcc-s1 libssl3t64 zlib1g libzstd1 \
+      "$(dpkg-query -W -f='${Package}' 'gcc-*-base')"
+
+# FIPS provider, its configuration and the system policy. The multiarch
+# module directory and the /usr/lib/ssl links come from dev, where the
+# openssl package created them.
+RUN modules_dir="$(readlink /usr/lib/ossl-modules)" \
+ && mkdir -p "/rootfs${modules_dir}" /rootfs/usr/lib/ssl /rootfs/etc/ssl \
+ && cp -a "${modules_dir}/fips.so" "/rootfs${modules_dir}/" \
+ && cp -a /usr/lib/ossl-modules /rootfs/usr/lib/ \
+ && cp -a /usr/lib/ssl/fipsmodule.cnf /usr/lib/ssl/openssl.cnf /usr/lib/ssl/cert.pem \
+      /usr/lib/ssl/certs /usr/lib/ssl/private /rootfs/usr/lib/ssl/ \
+ && cp -a /etc/ssl/openssl.cnf /etc/ssl/certs /rootfs/etc/ssl/ \
+ && mkdir -p /rootfs/usr/share/doc \
+ && cp -a /usr/share/doc/openssl-fips-provider /rootfs/usr/share/doc/ \
+ && mkdir -m 0700 /rootfs/etc/ssl/private
+
+# Users, name service configuration and writable directories.
+RUN printf 'root:x:0:0:root:/root:/sbin/nologin\nnonroot:x:65532:65532:nonroot:/home/nonroot:/sbin/nologin\n' \
+      > /rootfs/etc/passwd \
+ && printf 'root:x:0:\nnonroot:x:65532:\n' > /rootfs/etc/group \
+ && printf 'hosts: files dns\n' > /rootfs/etc/nsswitch.conf \
+ && mkdir -m 0700 /rootfs/root \
+ && mkdir -m 0755 /rootfs/home \
+ && install -d -m 0700 -o 65532 -g 65532 /rootfs/home/nonroot \
+ && install -d -m 1777 /rootfs/tmp
+
+# ---------------------------------------------------------------------------
+# runtime: distroless.
+# ---------------------------------------------------------------------------
+FROM scratch AS runtime
+
+ARG OPENSSL_FIPS_VERSION
+ARG OPENSSL_FIPS_CMVP
+
+LABEL org.opencontainers.image.title="debian-fips-base" \
+      org.opencontainers.image.description="Distroless Debian with OpenSSL routed through the OpenSSL ${OPENSSL_FIPS_VERSION} FIPS provider" \
+      org.opencontainers.image.source="https://github.com/worlddrknss/debian-fips-140-3" \
+      fips.openssl.provider.version="${OPENSSL_FIPS_VERSION}" \
+      fips.openssl.provider.cmvp="${OPENSSL_FIPS_CMVP}"
+
+COPY --from=rootfs /rootfs/ /
+
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    OPENSSL_CONF=/etc/ssl/openssl.cnf \
+    OPENSSL_MODULES=/usr/lib/ossl-modules \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    GODEBUG=fips140=only
+
+USER 65532:65532
+WORKDIR /home/nonroot
+
+# ---------------------------------------------------------------------------
+# test: runtime + busybox + the openssl CLI, to run tests/ against the
+# distroless filesystem. Never published.
+# ---------------------------------------------------------------------------
+FROM runtime AS test
+
+COPY --from=rootfs /bin/busybox /bin/busybox
+COPY --from=rootfs /usr/bin/openssl /usr/bin/openssl
+
+USER 0
+RUN ["/bin/busybox", "--install", "-s", "/bin"]
+USER 65532:65532
+
+# ---------------------------------------------------------------------------
+# Default target for a plain `docker build`: the distroless runtime.
+# ---------------------------------------------------------------------------
+FROM runtime
