@@ -9,7 +9,7 @@ components.
 | `debian-fips-base` | Debian slim with system OpenSSL locked to a FIPS provider | OpenSSL FIPS provider 3.5.4 (default) or 3.1.2 |
 | `debian-fips-go` | Base + Go toolchain that builds FIPS binaries | Go Cryptographic Module v1.0.0 ([CMVP #5247](https://go.dev/doc/security/fips140)) |
 | `debian-fips-node` | Base + Node.js compiled against the system OpenSSL | OpenSSL FIPS provider from the base |
-| `debian-fips-bun` | Node image + Bun | **None for Bun.** `node` is FIPS; `bun` is not |
+| `debian-fips-bun` | Base + Bun | **None for Bun's own crypto** (BoringSSL) |
 
 ## OpenSSL FIPS provider versions
 
@@ -37,8 +37,8 @@ make lint         # hadolint, shellcheck, actionlint, markdownlint, gofmt/vet
 OPENSSL_FIPS_VERSION=3.1.2 docker buildx bake --load
 ```
 
-The go and node images build `FROM` the base, and bun builds `FROM` node, through named bake
-contexts, so one `bake` call builds the whole family. Versions are set in
+The go, node and bun images build `FROM` the base through a named bake context, so one `bake`
+call builds the whole family. Versions are set in
 [docker-bake.hcl](docker-bake.hcl). Each Dockerfile pins the SHA-256 of every download it makes.
 
 ## CI
@@ -136,14 +136,16 @@ policy in `NODE_OPTIONS`. If you set `NODE_OPTIONS` in a downstream image, keep 
 
 ## Bun image
 
-`debian-fips-bun` is the Node.js image with Bun added, as a convenience for projects that use Bun.
+`debian-fips-bun` is the base image with Bun added, for projects that run on Bun. It doesn't
+include Node.js.
+
 **It is not a FIPS runtime for Bun.** Bun builds BoringSSL into its binary and ignores the system
 OpenSSL, so any crypto Bun runs (TLS, `fetch` over HTTPS, `node:crypto`, WebCrypto) is outside
 the FIPS boundary. The 256-bit TLS policy doesn't apply to it either. The test suite confirms this
-by checking that `bun` still computes MD5.
+by checking that `bun` still computes MD5. Anything else in the image that uses the system
+OpenSSL is still FIPS-enforced.
 
-- Use `bun` for `bun install`, `bun test` and `bun build`.
-- Run workloads that need FIPS, including anything that handles CJI, with `node`.
+Workloads that need FIPS, including anything that handles CJI, should run on `debian-fips-node`.
 
 ## Scope and caveats
 

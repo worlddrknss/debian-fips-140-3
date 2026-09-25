@@ -1,16 +1,14 @@
 # syntax=docker/dockerfile:1
 
-# Bun on the FIPS Node.js image.
+# Bun on the FIPS base image.
 #
 # NOT A FIPS RUNTIME. Bun statically links BoringSSL, which is not FIPS
 # validated and ignores the system OpenSSL configuration. Crypto that Bun
 # performs (TLS, fetch over HTTPS, node:crypto, WebCrypto) is outside the FIPS
-# boundary, and the 256-bit TLS policy does not apply to it.
-#
-# Use bun for installs, tests and bundling, and run workloads that need FIPS
-# with node, which is FIPS-enforced in this image.
+# boundary, and the 256-bit TLS policy does not apply to it. Everything else
+# in the image that uses the system OpenSSL is still FIPS-enforced.
 
-ARG NODE_IMAGE=debian-fips-node:latest
+ARG BASE_IMAGE=debian-fips-base:latest
 ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 
 # ---------------------------------------------------------------------------
@@ -46,12 +44,12 @@ RUN case "${TARGETARCH}" in \
 # ---------------------------------------------------------------------------
 # Runtime image
 # ---------------------------------------------------------------------------
-FROM ${NODE_IMAGE}
+FROM ${BASE_IMAGE}
 
 ARG BUN_VERSION=1.4.2
 
 LABEL org.opencontainers.image.title="debian-fips-bun" \
-      org.opencontainers.image.description="Bun ${BUN_VERSION} on the FIPS Node.js image. Bun's own crypto (BoringSSL) is NOT FIPS validated; node is." \
+      org.opencontainers.image.description="Bun ${BUN_VERSION} on the FIPS base image. Bun's own crypto (BoringSSL) is NOT FIPS validated." \
       fips.bun.crypto="not-validated"
 
 COPY --from=bun-download /out/bun /usr/local/bin/bun

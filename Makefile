@@ -25,7 +25,7 @@ test-node:
 	docker run --rm -v "$(CURDIR)/tests:/tests:ro" debian-fips-node:latest sh -c '/tests/base.sh && /tests/node.sh'
 
 test-bun:
-	docker run --rm -v "$(CURDIR)/tests:/tests:ro" debian-fips-bun:latest sh -c '/tests/base.sh && /tests/node.sh && /tests/bun.sh'
+	docker run --rm -v "$(CURDIR)/tests:/tests:ro" debian-fips-bun:latest sh -c '/tests/base.sh && /tests/bun.sh'
 
 lint:
 	$(DOCKER_RUN) $(HADOLINT) hadolint images/base/Dockerfile images/go/Dockerfile images/node/Dockerfile images/bun/Dockerfile

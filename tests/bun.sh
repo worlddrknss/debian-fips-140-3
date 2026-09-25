@@ -10,8 +10,8 @@ bun --version >/dev/null || fail "bun does not run"
 bunx --version >/dev/null || fail "bunx does not run"
 pass "bun $(bun --version) runs"
 
-[ "$(node -p 'require("crypto").getFips()')" = "1" ] || fail "node is not in FIPS mode"
-pass "node is still FIPS-enforced alongside bun"
+command -v node >/dev/null && fail "node is installed; the Bun image should not include it"
+pass "node is not included"
 
 # Documents the boundary rather than enforcing anything: Bun's BoringSSL
 # ignores the system FIPS configuration, so MD5 still works under bun.

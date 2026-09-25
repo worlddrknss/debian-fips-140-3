@@ -4,7 +4,7 @@
 #
 #   docker buildx bake --load            # build everything locally
 #   docker buildx bake --load go         # base + go
-#   docker buildx bake --load bun        # base + node + bun
+#   docker buildx bake --load bun        # base + bun
 
 # Registry prefix including the trailing slash, e.g. "ghcr.io/owner/".
 variable "REGISTRY" {
@@ -130,10 +130,10 @@ target "bun" {
   context    = "."
   dockerfile = "images/bun/Dockerfile"
   contexts = {
-    fips-node = "target:node"
+    fips-base = "target:base"
   }
   args = {
-    NODE_IMAGE   = "fips-node"
+    BASE_IMAGE   = "fips-base"
     DEBIAN_IMAGE = DEBIAN_IMAGE
     BUN_VERSION  = BUN_VERSION
   }
