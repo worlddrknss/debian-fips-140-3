@@ -91,40 +91,19 @@ jobs:
       - name: Test java
         run: make test-java
 
+      - name: Test nginx-ingress
+        run: make test-nginx-ingress
+
       - name: Check distroless images
         run: make distroless
 
       # Report-only: findings go to the job summary and to code scanning, and
       # never fail the build. Only vulnerabilities with an available fix are
-      # reported, since those are the ones a rebuild or bump can resolve.
-      # Results are split into runtime/ and dev/ because code scanning accepts
-      # at most 20 runs per upload.
+      # reported, since those are the ones a rebuild or bump can resolve. The
+      # vulnerability database (~3 GB unpacked) is downloaded once and shared
+      # by parallel scans; see scripts/scan-images.sh.
       - name: Scan images
-        run: |
-          mkdir -p scan/runtime scan/dev
-          docker buildx bake --print 2>/dev/null | jq -r '.target[].tags[0]' | sort | while read -r ref; do
-            name="$(echo "$ref" | tr ':' '_')"
-            case "$ref" in
-              *-dev) dir=scan/dev ;;
-              *) dir=scan/runtime ;;
-            esac
-            docker run --rm \
-              -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "$PWD/$dir:/scan" \
-              "$GRYPE" "$ref" --only-fixed \
-              -o "table=/scan/$name.txt" -o "sarif=/scan/$name.sarif"
-            # A distinct category per image and arch keeps code scanning from
-            # treating the uploads as one run.
-            jq --arg id "grype/$name/${{ matrix.arch }}/" \
-              '.runs[].automationDetails = {id: $id}' "$dir/$name.sarif" > "$dir/$name.tmp"
-            mv "$dir/$name.tmp" "$dir/$name.sarif"
-            {
-              echo "### $ref (${{ matrix.arch }})"
-              echo '```'
-              cat "$dir/$name.txt"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          done
+        run: scripts/scan-images.sh "${{ matrix.arch }}"
         env:
           GRYPE: anchore/grype:v0.119.0
 
@@ -322,7 +301,7 @@ jobs:
       # per-arch images no longer referenced by a kept tag.
       - uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
-          packages: debian-fips-base,debian-fips-go,debian-fips-node,debian-fipsbase-bun,debian-fips-python,debian-fips-dotnet,debian-fips-java
+          packages: debian-fips-base,debian-fips-go,debian-fips-node,debian-fipsbase-bun,debian-fips-python,debian-fips-dotnet,debian-fips-java,debian-fips-nginx-ingress
           keep-n-tagged: 20
           exclude-tags: latest,latest-dev,latest-pqc,latest-pqc-dev
           delete-untagged: true

@@ -19,6 +19,9 @@ with SBOMs rather than changelog entries.
 - `debian-fips-dotnet`: the ASP.NET Core 10 runtime (distroless) and .NET 10 SDK (`-dev`).
 - `debian-fips-java`: Debian's OpenJDK 21 with Bouncy Castle FIPS (BC-FJA 2.1.1, CMVP #4943)
   as the only cryptography provider.
+- `debian-fips-nginx-ingress`: the F5 NGINX Ingress Controller 5.6.3 (NGINX OSS 1.31.6), with
+  NGINX's TLS through the OpenSSL FIPS provider (hybrid ML-KEM on `-pqc`), an AES-256-only TLS
+  policy for client and backend connections, and the controller built with the Go FIPS module.
 - Copyright and license files for every package and runtime in the distroless images, with a
   test that enforces it.
 - GitHub Release per published build with SPDX SBOMs, an automated pin-bump workflow, OpenSSF

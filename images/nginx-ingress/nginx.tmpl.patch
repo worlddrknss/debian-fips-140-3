@@ -1,0 +1,14 @@
+--- a/internal/configs/version1/nginx.tmpl
++++ b/internal/configs/version1/nginx.tmpl
+@@ -122,7 +122,11 @@
+     {{- end}}
+     {{- if .SSLCiphers}}
+     ssl_ciphers "{{.SSLCiphers}}";
++    {{- else}}
++    {{- /* debian-fips-140-3: default to the image's AES-256-GCM-only policy. */}}
++    ssl_ciphers "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384";
+     {{- end}}
++    include /etc/nginx/fips-tls-policy.conf;
+     {{- if .SSLPreferServerCiphers}}
+     ssl_prefer_server_ciphers on;
+     {{- end}}
