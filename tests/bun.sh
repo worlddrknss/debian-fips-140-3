@@ -10,8 +10,15 @@ bun --version >/dev/null || fail "bun does not run"
 bunx --version >/dev/null || fail "bunx does not run"
 pass "bun $(bun --version) runs"
 
-command -v node >/dev/null && fail "node is installed; the Bun image should not include it"
-pass "node is not included"
+# `node` must be Bun's compatibility symlink, not a Node.js install.
+[ "$(node -e 'console.log(typeof Bun)')" = "object" ] || fail "node is not bun"
+pass "node runs Bun in Node.js compatibility mode"
+
+# npm launchers (#!/usr/bin/env node) must work, including on distroless.
+printf '#!/usr/bin/env node\nconsole.log("launcher ok")\n' > "${TMPDIR:-/tmp}/launcher"
+chmod +x "${TMPDIR:-/tmp}/launcher"
+[ "$("${TMPDIR:-/tmp}/launcher")" = "launcher ok" ] || fail "#!/usr/bin/env node launcher failed"
+pass "#!/usr/bin/env node launchers run"
 
 # Documents the boundary rather than enforcing anything: Bun's BoringSSL
 # ignores the system FIPS configuration, so MD5 still works under bun.

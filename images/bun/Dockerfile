@@ -53,12 +53,17 @@ RUN case "${TARGETARCH}" in \
  && unzip -j /tmp/bun.zip '*/bun' -d /out \
  && chmod 0755 /out/bun \
  && ln -s bun /out/bunx \
+ && ln -s bun /out/node \
  && mkdir -p /doc \
  && curl -fsSLo /doc/LICENSE.md \
       "https://raw.githubusercontent.com/oven-sh/bun/bun-v${BUN_VERSION}/LICENSE.md" \
  && echo "${license_sha256}  /doc/LICENSE.md" | sha256sum -c -
 # LICENSE.md carries Bun's MIT license and the LGPL-2 notices for the
 # JavaScriptCore/WebKit code Bun links statically, which redistribution needs.
+#
+# `node` is a symlink to bun, as in the official oven/bun images: invoked as
+# node, Bun runs in Node.js compatibility mode, so npm packages' launchers
+# (#!/usr/bin/env node, e.g. node_modules/.bin/prisma) work unchanged.
 
 # ---------------------------------------------------------------------------
 # dev: bun on the dev base.
@@ -77,6 +82,15 @@ COPY --from=bun-download /doc/LICENSE.md /usr/local/share/doc/bun/LICENSE.md
 # ---------------------------------------------------------------------------
 # runtime: distroless. Bun only needs glibc, which the base already has.
 # ---------------------------------------------------------------------------
+FROM ${BASE_DEV_IMAGE} AS env-binary
+
+# Just /usr/bin/env from coreutils (not a shell), so #!/usr/bin/env node
+# launchers resolve in the distroless image. coreutils' copyright file comes
+# along for redistribution.
+RUN mkdir -p /out/usr/bin /out/usr/share/doc/coreutils \
+ && cp -a /usr/bin/env /out/usr/bin/env \
+ && cp -a /usr/share/doc/coreutils/copyright /out/usr/share/doc/coreutils/copyright
+
 FROM ${BASE_IMAGE} AS runtime
 
 ARG BUN_VERSION=1.4.2
@@ -87,6 +101,7 @@ LABEL org.opencontainers.image.title="debian-fipsbase-bun" \
 
 COPY --from=bun-download /out/ /usr/local/bin/
 COPY --from=bun-download /doc/LICENSE.md /usr/local/share/doc/bun/LICENSE.md
+COPY --from=env-binary /out/ /
 
 CMD ["bun"]
 

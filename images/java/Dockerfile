@@ -128,7 +128,6 @@ COPY --from=bc-download /bc/bc-fips.jar /bc/bctls-fips.jar /bc/bcutil-fips.jar /
 COPY --from=bc-download /bc/LICENSE.html /usr/share/doc/bc-fips/LICENSE.html
 COPY --from=entropy-build /fips-entropy.jar /usr/share/java/fips-entropy.jar
 COPY --chmod=0755 images/java/configure-fips.sh /usr/local/sbin/configure-java-fips
-COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
 
 # configure-java-fips edits the package's java.security in place, so the
 # rootfs copy below picks up the FIPS configuration.

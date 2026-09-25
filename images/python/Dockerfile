@@ -56,7 +56,6 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 \
  && rm -rf /var/lib/apt/lists/*
 
-COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
 
 # The python3.X dependency closure, minus what the base already has and
 # minus debconf (only used by package maintainer scripts).

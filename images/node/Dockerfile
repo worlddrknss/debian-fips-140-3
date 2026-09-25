@@ -85,7 +85,6 @@ RUN node -e 'if (require("crypto").getFips() !== 1) process.exit(1)' \
 # ---------------------------------------------------------------------------
 FROM ${BASE_DEV_IMAGE} AS rootfs
 
-COPY --chmod=0755 images/rootfs/install-packages.sh /usr/local/sbin/install-packages
 RUN install-packages /rootfs libstdc++6
 
 COPY --from=node-download /out/bin/node /rootfs/usr/local/bin/node
