@@ -131,6 +131,10 @@ RUN mkdir -p /var/lib/nginx /etc/nginx/secrets /etc/nginx/stream-conf.d \
 
 EXPOSE 80 443
 STOPSIGNAL SIGTERM
+# The controller opens its templates (/nginx.tmpl etc.) relative to the working
+# directory, as upstream's image (WORKDIR /) expects. The base's /home/nonroot
+# isn't readable by UID 101.
+WORKDIR /
 ENTRYPOINT ["/nginx-ingress"]
 USER 101
 
@@ -179,6 +183,10 @@ COPY --from=rootfs /rootfs/ /
 
 EXPOSE 80 443
 STOPSIGNAL SIGTERM
+# The controller opens its templates (/nginx.tmpl etc.) relative to the working
+# directory, as upstream's image (WORKDIR /) expects. The base's /home/nonroot
+# isn't readable by UID 101.
+WORKDIR /
 ENTRYPOINT ["/nginx-ingress"]
 USER 101
 

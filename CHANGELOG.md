@@ -43,6 +43,11 @@ with SBOMs rather than changelog entries.
 - `GODEBUG=fips140=only` is set in the base images, so Go binaries built with `GOFIPS140` reject
   non-approved algorithms on them by default.
 
+### Fixed
+
+- `debian-fips-nginx-ingress` runs from `/`, so the controller can read its templates as
+  UID 101 (it inherited `/home/nonroot` as its working directory and crash-looped).
+
 ## [0.1.0] - 2026-09-25
 
 ### Added
