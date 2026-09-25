@@ -44,7 +44,9 @@ call builds the whole family. Versions are set in
 ## CI
 
 [.github/workflows/build.yml](.github/workflows/build.yml) runs on every pull request, on `main`,
-and weekly to pick up Debian security updates:
+and weekly to pick up Debian security updates. The base image's apt layer is keyed to the ISO
+week (`APT_REFRESH`), so the first build each week reruns `apt-get upgrade` instead of reusing
+the cached layer:
 
 1. **Lint** everything (`make lint`).
 2. **Build and test** all four images on native amd64 and arm64 runners.
@@ -123,9 +125,15 @@ Limiting to TLS 1.2 gives up TLS 1.3 and hybrid PQC key exchange.
 
 ## Node.js image
 
-The official Node.js binaries bundle their own OpenSSL, which bypasses the FIPS provider. This
-image compiles Node.js from source with `--shared-openssl`, so `crypto`, `tls` and `https` all
-use the base image's FIPS configuration (`crypto.getFips() === 1`).
+The image uses the official Node.js release binary, pinned by checksum. It bundles its own
+OpenSSL 3, which the base image points at the FIPS provider and `/etc/ssl/openssl.cnf` through
+`OPENSSL_MODULES` and `OPENSSL_CONF`. `crypto`, `tls` and `https` all run through the FIPS
+provider (`crypto.getFips() === 1`). The certified boundary is the provider (`fips.so`), and the
+libcrypto that loads it is outside that boundary whether it's Debian's or Node's bundled copy.
+
+If the provider can't be loaded, Node.js aborts at startup rather than running without FIPS. The
+C headers (`include/`) are left out to save 65 MB; `node-gyp` downloads them if you compile
+native add-ons.
 
 Node.js sets its own TLS cipher list and ignores the system one, so the image repeats the 256-bit
 policy in `NODE_OPTIONS`. If you set `NODE_OPTIONS` in a downstream image, keep these flags:
@@ -153,8 +161,8 @@ Workloads that need FIPS, including anything that handles CJI, should run on `de
   Runtimes that bundle their own crypto (Bun, official Node.js binaries, Java JCE, Rust
   `ring`/`rustls`) bypass it and each need their own FIPS setup.
 - **Downstream images must not override the FIPS configuration.** The `default` provider is
-  compiled into Debian's libcrypto, so setting `OPENSSL_CONF` to another file or calling
-  `OSSL_PROVIDER_load(NULL, "default")` re-enables non-approved algorithms. For Go, don't
+  compiled into every libcrypto, so changing `OPENSSL_CONF` or `OPENSSL_MODULES`, or calling
+  `OSSL_PROVIDER_load(NULL, "default")`, re-enables non-approved algorithms. For Go, don't
   override `GODEBUG=fips140`.
 - `apt` checks repository signatures with `sqv`, which uses nettle. That's crypto outside the
   FIPS boundary, and it runs when packages are installed, not when your application runs.

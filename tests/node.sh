@@ -1,19 +1,18 @@
 #!/bin/sh
-# Verifies Node.js uses the system OpenSSL FIPS provider. Run inside the Node image:
+# Verifies Node.js runs its crypto through the OpenSSL FIPS provider. Run inside the Node image:
 #   docker run --rm -v "$PWD/tests:/tests:ro" <image> /tests/node.sh
 set -eu
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }
 
-system_openssl="$(openssl version | awk '{print $2}')"
-node_openssl="$(node -p 'process.versions.openssl')"
-[ "$node_openssl" = "$system_openssl" ] \
-  || fail "Node uses OpenSSL $node_openssl, system has $system_openssl (not shared)"
-pass "Node is linked to the system OpenSSL $node_openssl"
+if OPENSSL_MODULES=/nonexistent node -e '' 2>/dev/null; then
+  fail "Node started without the FIPS provider"
+fi
+pass "Node refuses to start when the FIPS provider can't be loaded"
 
 [ "$(node -p 'require("crypto").getFips()')" = "1" ] || fail "crypto.getFips() is not 1"
-pass "crypto.getFips() is 1"
+pass "crypto.getFips() is 1 (Node's bundled OpenSSL $(node -p 'process.versions.openssl'))"
 
 node -e 'require("crypto").createHash("sha256").update("x").digest()' \
   || fail "SHA-256 unavailable"

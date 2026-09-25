@@ -79,6 +79,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG OPENSSL_FIPS_VERSION
 ARG OPENSSL_FIPS_CMVP
+# Changing this value reruns the apt layer below. CI sets it to the ISO week
+# so scheduled builds pick up Debian security updates despite the layer cache.
+ARG APT_REFRESH=""
 
 LABEL org.opencontainers.image.title="debian-fips-base" \
       org.opencontainers.image.description="Debian slim with OpenSSL routed through the OpenSSL ${OPENSSL_FIPS_VERSION} FIPS provider" \
@@ -96,9 +99,11 @@ RUN groupadd --gid 65532 nonroot \
 # The legacy provider (MD4, RC4, DES, Blowfish, ...) ships in the base image
 # as a hard dependency of libssl3t64, so it can't be purged. Delete the module
 # and exclude it from dpkg so package upgrades don't restore it.
-RUN echo 'path-exclude=/usr/lib/*/ossl-modules/legacy.so' \
+RUN echo "apt refresh: ${APT_REFRESH:-none}" \
+ && echo 'path-exclude=/usr/lib/*/ossl-modules/legacy.so' \
       > /etc/dpkg/dpkg.cfg.d/no-openssl-legacy-provider \
  && apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends ca-certificates openssl \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /usr/lib/*/ossl-modules/legacy.so
@@ -108,11 +113,19 @@ COPY --from=fips-builder /fips/fipsmodule.cnf /usr/lib/ssl/fipsmodule.cnf
 COPY images/base/openssl.cnf /etc/ssl/openssl.cnf
 
 # Install the provider into Debian's multiarch module directory, which is
-# where libcrypto looks by default.
+# where the system libcrypto looks by default. /usr/lib/ossl-modules links to
+# it so OPENSSL_MODULES can be arch-independent.
 RUN modules_dir="$(openssl version -m | sed -E 's/^MODULESDIR: "(.*)"$/\1/')" \
  && install -m 0644 /tmp/fips.so "${modules_dir}/fips.so" \
  && rm /tmp/fips.so \
+ && ln -s "${modules_dir}" /usr/lib/ossl-modules \
  && openssl list -providers | grep 'OpenSSL FIPS Provider' >/dev/null
+
+# Applications that bundle their own OpenSSL 3 (the official Node.js binaries,
+# Python cryptography wheels, ...) look elsewhere for providers and config by
+# default. Pointing them here makes them load this FIPS provider and policy.
+ENV OPENSSL_CONF=/etc/ssl/openssl.cnf \
+    OPENSSL_MODULES=/usr/lib/ossl-modules
 
 # Restore the default shell so images built FROM this one aren't affected.
 SHELL ["/bin/sh", "-c"]

@@ -27,6 +27,11 @@ variable "DEBIAN_IMAGE" {
   default = "debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a"
 }
 
+# Any new value reruns the base image's apt layer. CI sets the ISO week.
+variable "APT_REFRESH" {
+  default = ""
+}
+
 variable "OPENSSL_FIPS_VERSION" {
   default = "3.5.4"
 }
@@ -84,6 +89,7 @@ target "base" {
   dockerfile = "images/base/Dockerfile"
   args = {
     DEBIAN_IMAGE         = DEBIAN_IMAGE
+    APT_REFRESH          = APT_REFRESH
     OPENSSL_FIPS_VERSION = OPENSSL_FIPS_VERSION
     OPENSSL_FIPS_CMVP    = openssl_cmvp(OPENSSL_FIPS_VERSION)
   }

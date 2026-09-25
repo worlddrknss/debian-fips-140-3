@@ -39,8 +39,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    # Node.js compiles from source; a cold build takes most of an hour.
-    timeout-minutes: 150
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -51,6 +50,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Keys the base image's apt layer to the ISO week, so the first build
+      # each week picks up Debian security updates instead of the cached layer.
+      - name: Set apt refresh key
+        run: echo "APT_REFRESH=$(date -u +%G-W%V)" >> "$GITHUB_ENV"
 
       - name: Build images
         uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
