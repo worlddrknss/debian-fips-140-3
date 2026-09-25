@@ -17,16 +17,18 @@
 # for this purpose.
 #
 # OPENSSL_FIPS_VERSION selects the provider:
-#   3.5.4  Default. Adds ML-KEM, ML-DSA and SLH-DSA. Submitted for
+#   3.1.2  Default (the latest tags). FIPS 140-3 validated, CMVP cert #4985.
+#          No PQC.
+#   3.5.4  The -pqc tags. Adds ML-KEM, ML-DSA and SLH-DSA. Submitted for
 #          FIPS 140-3, in CMVP review, NOT yet validated.
-#   3.1.2  FIPS 140-3 validated (CMVP cert #4985). No PQC.
 
 # Pinned by multi-arch index digest so the assessed base is reproducible.
 ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
-ARG OPENSSL_FIPS_VERSION=3.5.4
-# CMVP certificate number for the provider, or "in-process". Set by
-# docker-bake.hcl from OPENSSL_FIPS_VERSION and recorded as an image label.
-ARG OPENSSL_FIPS_CMVP=in-process
+ARG OPENSSL_FIPS_VERSION=3.1.2
+# CMVP certificate number for the provider, or "in-process", recorded as an
+# image label. docker-bake.hcl sets it from OPENSSL_FIPS_VERSION; the build
+# fails if the two disagree, so the label can't misstate the certificate.
+ARG OPENSSL_FIPS_CMVP=4985
 
 # ---------------------------------------------------------------------------
 # Build the FIPS provider exactly as the security policy requires:
@@ -37,6 +39,7 @@ FROM ${DEBIAN_IMAGE} AS fips-builder
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG OPENSSL_FIPS_VERSION
+ARG OPENSSL_FIPS_CMVP
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -45,10 +48,12 @@ RUN apt-get update \
 
 WORKDIR /src
 RUN case "${OPENSSL_FIPS_VERSION}" in \
-      3.1.2) sha256=a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539 ;; \
-      3.5.4) sha256=967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99 ;; \
+      3.1.2) sha256=a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539; cmvp=4985 ;; \
+      3.5.4) sha256=967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99; cmvp=in-process ;; \
       *) echo "Unsupported OPENSSL_FIPS_VERSION: ${OPENSSL_FIPS_VERSION}" >&2; exit 1 ;; \
     esac \
+ && { [ "${OPENSSL_FIPS_CMVP}" = "${cmvp}" ] \
+      || { echo "OPENSSL_FIPS_CMVP=${OPENSSL_FIPS_CMVP} but provider ${OPENSSL_FIPS_VERSION} is ${cmvp}" >&2; exit 1; }; } \
  && curl -fsSLo openssl.tar.gz \
       "https://www.openssl.org/source/openssl-${OPENSSL_FIPS_VERSION}.tar.gz" \
  && echo "${sha256}  openssl.tar.gz" | sha256sum -c - \
