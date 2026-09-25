@@ -67,6 +67,17 @@ negotiated="$(echo Q | openssl s_client -connect 127.0.0.1:8442 -brief 2>&1 \
 [ "$negotiated" = "TLS_AES_256_GCM_SHA384" ] || fail "default TLS negotiated '$negotiated'"
 pass "TLS allows only AES-256-GCM (CJIS 256-bit minimum)"
 
+# Distroless images record packages in status.d. Each one must keep its
+# copyright file, which redistributing its binaries requires.
+if [ -d /var/lib/dpkg/status.d ]; then
+  for record in /var/lib/dpkg/status.d/*; do
+    case "$record" in *.md5sums) continue ;; esac
+    pkg="${record##*/}"
+    [ -f "/usr/share/doc/$pkg/copyright" ] || fail "no copyright file for package $pkg"
+  done
+  pass "every installed package ships its copyright file"
+fi
+
 id nonroot >/dev/null 2>&1 || fail "nonroot user missing"
 [ "$(id -u nonroot)" = "65532" ] || fail "nonroot UID is not 65532"
 pass "nonroot user (UID 65532) exists"

@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # Weekly rebuild picks up Debian security updates to the system OpenSSL.
+  # Weekly rebuild picks up Debian security updates.
   schedule:
     - cron: "0 6 * * 1"
 
@@ -39,15 +39,22 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions:
       contents: read
       packages: write
       security-events: write
     env:
       PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      # Per-target GitHub Actions cache scopes (see docker-bake.hcl).
+      CACHE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Every image and variant is loaded for testing; the runner's preinstalled
+      # toolchains aren't used and would otherwise crowd the disk.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -60,16 +67,8 @@ jobs:
         uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
+          targets: default,test
           load: true
-          set: |
-            base.cache-from=type=gha,scope=base-${{ matrix.arch }}
-            base.cache-to=type=gha,scope=base-${{ matrix.arch }},mode=max
-            go.cache-from=type=gha,scope=go-${{ matrix.arch }}
-            go.cache-to=type=gha,scope=go-${{ matrix.arch }},mode=max
-            node.cache-from=type=gha,scope=node-${{ matrix.arch }}
-            node.cache-to=type=gha,scope=node-${{ matrix.arch }},mode=max
-            bun.cache-from=type=gha,scope=bun-${{ matrix.arch }}
-            bun.cache-to=type=gha,scope=bun-${{ matrix.arch }},mode=max
 
       - name: Test base
         run: make test-base
@@ -83,27 +82,46 @@ jobs:
       - name: Test bun
         run: make test-bun
 
+      - name: Test python
+        run: make test-python
+
+      - name: Test dotnet
+        run: make test-dotnet
+
+      - name: Test java
+        run: make test-java
+
+      - name: Check distroless images
+        run: make distroless
+
       # Report-only: findings go to the job summary and to code scanning, and
       # never fail the build. Only vulnerabilities with an available fix are
       # reported, since those are the ones a rebuild or bump can resolve.
+      # Results are split into runtime/ and dev/ because code scanning accepts
+      # at most 20 runs per upload.
       - name: Scan images
         run: |
-          mkdir -p scan
-          for image in base go node bun; do
+          mkdir -p scan/runtime scan/dev
+          docker buildx bake --print 2>/dev/null | jq -r '.target[].tags[0]' | sort | while read -r ref; do
+            name="$(echo "$ref" | tr ':' '_')"
+            case "$ref" in
+              *-dev) dir=scan/dev ;;
+              *) dir=scan/runtime ;;
+            esac
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "$PWD/scan:/scan" \
-              "$GRYPE" "debian-fips-$image:latest" --only-fixed \
-              -o "table=/scan/$image.txt" -o "sarif=/scan/$image.sarif"
+              -v "$PWD/$dir:/scan" \
+              "$GRYPE" "$ref" --only-fixed \
+              -o "table=/scan/$name.txt" -o "sarif=/scan/$name.sarif"
             # A distinct category per image and arch keeps code scanning from
             # treating the uploads as one run.
-            jq --arg id "grype/$image/${{ matrix.arch }}/" \
-              '.runs[].automationDetails = {id: $id}' "scan/$image.sarif" > "scan/$image.tmp"
-            mv "scan/$image.tmp" "scan/$image.sarif"
+            jq --arg id "grype/$name/${{ matrix.arch }}/" \
+              '.runs[].automationDetails = {id: $id}' "$dir/$name.sarif" > "$dir/$name.tmp"
+            mv "$dir/$name.tmp" "$dir/$name.sarif"
             {
-              echo "### debian-fips-$image (${{ matrix.arch }})"
+              echo "### $ref (${{ matrix.arch }})"
               echo '```'
-              cat "scan/$image.txt"
+              cat "$dir/$name.txt"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           done
@@ -111,11 +129,17 @@ jobs:
           GRYPE: anchore/grype:v0.119.0
 
       # Pull requests from forks get a read-only token and can't upload.
-      - name: Upload scan results to code scanning
+      - name: Upload runtime scan results to code scanning
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
-          sarif_file: scan
+          sarif_file: scan/runtime
+
+      - name: Upload dev scan results to code scanning
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: scan/dev
 
       - name: Log in to GHCR
         if: env.PUBLISH == 'true'
@@ -140,11 +164,6 @@ jobs:
           PUSH_BY_DIGEST: "true"
         with:
           source: .
-          set: |
-            base.cache-from=type=gha,scope=base-${{ matrix.arch }}
-            go.cache-from=type=gha,scope=go-${{ matrix.arch }}
-            node.cache-from=type=gha,scope=node-${{ matrix.arch }}
-            bun.cache-from=type=gha,scope=bun-${{ matrix.arch }}
 
       - name: Export digests
         if: env.PUBLISH == 'true'
@@ -173,6 +192,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      build-tag: ${{ steps.tags.outputs.build-tag }}
+      subjects: ${{ steps.tags.outputs.subjects }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -190,17 +212,21 @@ jobs:
           path: digests
           merge-multiple: true
 
-      # Tags each image latest, its version, and a unique YYYYMMDD-<sha> build
-      # tag, all pointing at one multi-arch index.
+      # Tags each image latest<flavor><variant>, its version, and a unique
+      # YYYYMMDD-<sha> build tag, all pointing at one multi-arch index. Records
+      # each index digest for the attest and release jobs.
       - name: Create multi-arch tags
+        id: tags
         run: |
           export REGISTRY="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/"
           BUILD_TAG="$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
           export BUILD_TAG
+          echo "[]" > subjects.json
           docker buildx bake --print 2>/dev/null \
             | jq -r '.target | to_entries[] | [.key, (.value.tags | join(" "))] | @tsv' \
             | while IFS=$'\t' read -r target tags; do
-                name="${tags%%:*}"
+                first="${tags%% *}"
+                name="${first%%:*}"
                 set --
                 for tag in $tags; do set -- "$@" -t "$tag"; done
                 for arch in amd64 arm64; do
@@ -208,17 +234,24 @@ jobs:
                   set -- "$@" "$name@$digest"
                 done
                 docker buildx imagetools create "$@"
+                index="$(docker buildx imagetools inspect "$first" --format '{{json .Manifest}}' | jq -r .digest)"
+                jq --arg name "$name" --arg tag "${first##*:}" --arg digest "$index" \
+                  '. + [{name: $name, tag: $tag, digest: $digest}]' subjects.json > subjects.tmp
+                mv subjects.tmp subjects.json
               done
+          echo "build-tag=$BUILD_TAG" >> "$GITHUB_OUTPUT"
+          echo "subjects=$(jq -c . subjects.json)" >> "$GITHUB_OUTPUT"
 
   # Signs a SLSA build provenance attestation for each published multi-arch
   # image with GitHub's Sigstore instance and stores it in GHCR. Verify with:
-  #   gh attestation verify oci://ghcr.io/<owner>/debian-fips-base:latest --owner <owner>
+  #   gh attestation verify oci://ghcr.io/<owner>/<image>:<tag> --owner <owner>
   attest:
-    name: attest (${{ matrix.image }})
+    name: attest (${{ matrix.subject.tag }} ${{ matrix.subject.name }})
     needs: manifest
     strategy:
+      fail-fast: false
       matrix:
-        image: [base, go, node, bun]
+        subject: ${{ fromJSON(needs.manifest.outputs.subjects) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -226,6 +259,30 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ matrix.subject.name }}
+          subject-digest: ${{ matrix.subject.digest }}
+          push-to-registry: true
+
+  # One GitHub Release per published build, with a readable summary and the
+  # SPDX SBOM of every image. The 10 newest build releases are kept.
+  release:
+    name: release SBOMs
+    needs: [manifest, attest]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -234,34 +291,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve digest
-        id: digest
+      - name: Write notes and SBOMs
+        env:
+          SUBJECTS: ${{ needs.manifest.outputs.subjects }}
+          BUILD_TAG: ${{ needs.manifest.outputs.build-tag }}
         run: |
-          name="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/debian-fips-${{ matrix.image }}"
-          digest="$(docker buildx imagetools inspect "$name:latest" --format '{{json .Manifest}}' | jq -r .digest)"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "$SUBJECTS" > subjects.json
+          scripts/release-notes.sh subjects.json release
 
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-name: ${{ steps.digest.outputs.name }}
-          subject-digest: ${{ steps.digest.outputs.digest }}
-          push-to-registry: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TAG: ${{ needs.manifest.outputs.build-tag }}
+        run: |
+          gh release create "build-$BUILD_TAG" release/sbom/*.spdx.json \
+            --title "Build $BUILD_TAG" --notes-file release/notes.md --target "$GITHUB_SHA" --latest
+          gh release list --limit 100 --json tagName --jq '.[].tagName' \
+            | grep '^build-' | tail -n +11 \
+            | while read -r old; do gh release delete "$old" --yes --cleanup-tag; done
 
   cleanup:
     name: prune old images
-    needs: attest
+    needs: release
     runs-on: ubuntu-24.04
     permissions:
       packages: write
     steps:
-      # Keeps the 5 newest tagged builds of each image and deletes everything
-      # else, including untagged per-arch images no longer referenced by a
-      # kept multi-arch tag.
+      # Keeps the 20 newest tagged images of each package (5 builds, each with
+      # up to 4 variants) and deletes everything else, including untagged
+      # per-arch images no longer referenced by a kept tag.
       - uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
-          packages: debian-fips-base,debian-fips-go,debian-fips-node,debian-fips-bun
-          keep-n-tagged: 5
-          exclude-tags: latest
+          packages: debian-fips-base,debian-fips-go,debian-fips-node,debian-fipsbase-bun,debian-fips-python,debian-fips-dotnet,debian-fips-java
+          keep-n-tagged: 20
+          exclude-tags: latest,latest-dev,latest-pqc,latest-pqc-dev
           delete-untagged: true
           validate: true
