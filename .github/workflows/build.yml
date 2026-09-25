@@ -99,35 +99,11 @@ jobs:
 
       # Report-only: findings go to the job summary and to code scanning, and
       # never fail the build. Only vulnerabilities with an available fix are
-      # reported, since those are the ones a rebuild or bump can resolve.
-      # Results are split into runtime/ and dev/ because code scanning accepts
-      # at most 20 runs per upload.
+      # reported, since those are the ones a rebuild or bump can resolve. The
+      # vulnerability database (~3 GB unpacked) is downloaded once and shared
+      # by parallel scans; see scripts/scan-images.sh.
       - name: Scan images
-        run: |
-          mkdir -p scan/runtime scan/dev
-          docker buildx bake --print 2>/dev/null | jq -r '.target[].tags[0]' | sort | while read -r ref; do
-            name="$(echo "$ref" | tr ':' '_')"
-            case "$ref" in
-              *-dev) dir=scan/dev ;;
-              *) dir=scan/runtime ;;
-            esac
-            docker run --rm \
-              -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "$PWD/$dir:/scan" \
-              "$GRYPE" "$ref" --only-fixed \
-              -o "table=/scan/$name.txt" -o "sarif=/scan/$name.sarif"
-            # A distinct category per image and arch keeps code scanning from
-            # treating the uploads as one run.
-            jq --arg id "grype/$name/${{ matrix.arch }}/" \
-              '.runs[].automationDetails = {id: $id}' "$dir/$name.sarif" > "$dir/$name.tmp"
-            mv "$dir/$name.tmp" "$dir/$name.sarif"
-            {
-              echo "### $ref (${{ matrix.arch }})"
-              echo '```'
-              cat "$dir/$name.txt"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          done
+        run: scripts/scan-images.sh "${{ matrix.arch }}"
         env:
           GRYPE: anchore/grype:v0.119.0
 
