@@ -66,6 +66,13 @@ ENV GOTOOLCHAIN=local
 
 COPY --from=source /src /go/src/kubernetes-ingress
 WORKDIR /go/src/kubernetes-ingress
+# The controller runs nginx (reload, quit) through `sh -c`, and the distroless
+# image has no shell. Every command it passes is plain words, so run it
+# directly. The grep fails the build if upstream changes this code.
+RUN sed -i 's|command := exec.Command("sh", "-c", cmd)|args := strings.Fields(cmd)\n\tcommand := exec.Command(args[0], args[1:]...)|' \
+      internal/nginx/utils.go \
+ && grep -q 'exec.Command(args\[0\], args\[1:\]...)' internal/nginx/utils.go \
+ && ! grep -q '"sh", "-c"' internal/nginx/utils.go
 RUN go build -trimpath -ldflags "-s -w -X main.version=${NIC_VERSION}" \
       -o /nginx-ingress ./cmd/nginx-ingress \
  && go version -m /nginx-ingress | grep -q 'GOFIPS140=v1.0.0'

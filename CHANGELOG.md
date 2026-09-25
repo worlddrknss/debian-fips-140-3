@@ -47,6 +47,8 @@ with SBOMs rather than changelog entries.
 
 - `debian-fips-nginx-ingress` runs from `/`, so the controller can read its templates as
   UID 101 (it inherited `/home/nonroot` as its working directory and crash-looped).
+- `debian-fips-nginx-ingress` reloads NGINX without a shell. The controller ran `nginx -s reload`
+  through `sh -c`, which the distroless image lacks, so no configuration was ever applied.
 
 ## [0.1.0] - 2026-09-25
 
