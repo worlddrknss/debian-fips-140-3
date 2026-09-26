@@ -376,7 +376,8 @@ distroless image plus busybox and the `openssl` CLI.
 ## Updates and CI
 
 - [build.yml](.github/workflows/build.yml) builds and tests every image on native amd64 and
-  arm64 runners for each pull request, on `main`, and weekly; every build reruns
+  arm64 runners for each pull request and push to `main` that changes the images (docs-only
+  changes skip the build), and weekly; every build reruns
   `apt-get upgrade`. Images are checked with Dockle (failing on distroless findings) and scanned
   with Grype (results in code scanning; report-only, with the [OpenVEX](vex/) statements
   applied). On `main`, images are published with SBOMs, provenance attestations and cosign
