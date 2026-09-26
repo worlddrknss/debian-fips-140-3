@@ -4,12 +4,19 @@
 #   DOCKLE=goodwithtech/dockle:<version> scripts/dockle-images.sh
 #
 # Runtime (distroless) images fail on any WARN or FATAL finding. -dev images
-# are build environments that run as root and keep tools such as su and
+# and the Go toolchain are build environments that run as root and keep tools such as su and
 # passwd, so their findings are reported only. Ignored everywhere:
 #   CIS-DI-0005  Docker Content Trust: superseded by the cosign signatures
 #                and provenance attestations the publish job adds.
 #   CIS-DI-0006  HEALTHCHECK: a base image can't know how its app is checked;
 #                orchestrators define their own probes.
+#   DKL-DI-0006  "Avoid latest tag": about the reference this script checks
+#                (latest* tags), not the image; images are also tagged by
+#                version and build.
+# Accepted key (CIS-DI-0010, credentials in ENV): the Java image passes
+# -Djavax.net.ssl.trustStorePassword=changeit, the standard public password of
+# the CA trust store (public certificates, mode 0644). BCFKS needs a password
+# to load it; it protects nothing secret.
 # SCAN_REFS overrides the image list, which otherwise comes from the bake
 # default group.
 set -euo pipefail
@@ -22,12 +29,15 @@ status=0
 echo "### CIS Docker Benchmark (Dockle)" >> "$summary"
 for ref in $refs; do
   case "$ref" in
-    *-dev) level=fatal ;;  # report only; nothing in dev images is FATAL
+    # -dev variants and the Go toolchain (a build image with one variant) run
+    # as root and keep system tools: report only.
+    *-dev | */debian-fips-go:* | debian-fips-go:*) level=fatal ;;
     *) level=warn ;;
   esac
   if out="$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$DOCKLE" \
       --no-color --exit-code 1 --exit-level "$level" \
-      --ignore CIS-DI-0005 --ignore CIS-DI-0006 "$ref" 2>&1)"; then
+      --ignore CIS-DI-0005 --ignore CIS-DI-0006 --ignore DKL-DI-0006 \
+      --accept-key -Djavax.net.ssl.trustStorePassword "$ref" 2>&1)"; then
     result=pass
   else
     result=FAIL
