@@ -19,6 +19,12 @@ attestation and a cosign signature.
 > project isn't affiliated with or endorsed by NIST, the OpenSSL project, Debian, Bouncy Castle,
 > Microsoft or the Go team, and it comes with no warranty (see [LICENSE](LICENSE)).
 
+**Contents:** [Images](#images) · [Compliance](#compliance) · [Usage](#usage) ·
+[Verifying an image](#verifying-an-image) · [What is enforced](#what-is-enforced) ·
+[Limitations](#limitations) · [Image details](#image-details) ·
+[Building and testing](#building-and-testing) · [Updates and CI](#updates-and-ci) ·
+[License](#license)
+
 ## Images
 
 | Image | Runtime | Cryptographic module | CMVP status |
@@ -69,6 +75,26 @@ Approximate sizes (linux/arm64):
 | java | 229 MB | 420 MB (JDK) |
 | nginx-ingress | 131 MB | 343 MB (all modules) |
 | go | use `debian-fips-base` (16 MB) | 346 MB (toolchain) |
+
+## Compliance
+
+What the images address, each backed by a test, a CI check or a published artifact. The full
+mapping, with the evidence for every control, known exceptions and what's left to the deployer,
+is in [docs/compliance.md](docs/compliance.md).
+
+| Standard | Coverage in the images |
+| --- | --- |
+| FIPS 140-3 | Cryptography through CMVP-validated modules (OpenSSL #4985, Go #5247, Bouncy Castle #4943); non-approved algorithms refused. `-pqc` tags use a provider still in CMVP review. |
+| CJIS Security Policy | FIPS-validated crypto with 256-bit symmetric keys (AES-256-GCM only) for TLS. |
+| NIST SP 800-52r2, 800-131A | TLS 1.2+ only; MD5, SHA-1 signatures and RSA below 2048 bits rejected. |
+| NIST SP 800-190 | Distroless, non-root, no setuid files, pinned sources, vulnerability scanning with daily security rebuilds. |
+| NIST SP 800-53 | SC-13 (crypto), CM-7 (least functionality), AC-6 (least privilege), RA-5 and SI-2 (scanning, flaw remediation), SR-3/SR-4 and SI-7 (supply chain, signatures). |
+| NIST SP 800-218 (SSDF) | SBOMs, SLSA provenance, cosign signatures, OpenVEX for known findings. |
+| CIS Docker Benchmark | Checked with Dockle on every build; findings on distroless images fail it. |
+
+A container image can only cover part of these; the host, cluster and organization cover the
+rest (see [docs/compliance.md](docs/compliance.md#deployer-responsibilities) and
+[Limitations](#limitations)).
 
 ## Usage
 
@@ -350,7 +376,8 @@ distroless image plus busybox and the `openssl` CLI.
 ## Updates and CI
 
 - [build.yml](.github/workflows/build.yml) builds and tests every image on native amd64 and
-  arm64 runners for each pull request, on `main`, and weekly; every build reruns
+  arm64 runners for each pull request and push to `main` that changes the images (docs-only
+  changes skip the build), and weekly; every build reruns
   `apt-get upgrade`. Images are checked with Dockle (failing on distroless findings) and scanned
   with Grype (results in code scanning; report-only, with the [OpenVEX](vex/) statements
   applied). On `main`, images are published with SBOMs, provenance attestations and cosign

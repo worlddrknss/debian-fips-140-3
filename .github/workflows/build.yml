@@ -19,6 +19,34 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # Whether anything that goes into the images changed. Docs-only pull requests
+  # and pushes skip the image build (the build jobs still run, so the required
+  # checks report, but every step is skipped). Scheduled and manual runs always
+  # build.
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      images: ${{ steps.filter.outputs.images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        id: filter
+        with:
+          filters: |
+            images:
+              - images/**
+              - tests/**
+              - scripts/**
+              - vex/**
+              - docker-bake.hcl
+              - Makefile
+              - .github/workflows/build.yml
+
   lint:
     runs-on: ubuntu-24.04
     steps:
@@ -30,7 +58,7 @@ jobs:
         run: make lint
 
   build:
-    needs: lint
+    needs: [changes, lint]
     name: build (${{ matrix.arch }})
     strategy:
       fail-fast: false
@@ -47,25 +75,31 @@ jobs:
       packages: write
       security-events: write
     env:
-      PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      BUILD: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.images == 'true' }}
+      PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.images == 'true') }}
       # Per-target GitHub Actions cache scopes (see docker-bake.hcl).
       CACHE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.BUILD == 'true'
 
       # Every image and variant is loaded for testing; the runner's preinstalled
       # toolchains aren't used and would otherwise crowd the disk.
       - name: Free disk space
+        if: env.BUILD == 'true'
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: env.BUILD == 'true'
 
       # Keys the base image's apt layer to the ISO week, so the first build
       # each week picks up Debian security updates instead of the cached layer.
       - name: Set apt refresh key
+        if: env.BUILD == 'true'
         run: echo "APT_REFRESH=$(date -u +%G-W%V)" >> "$GITHUB_ENV"
 
       - name: Build images
+        if: env.BUILD == 'true'
         uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
@@ -73,35 +107,45 @@ jobs:
           load: true
 
       - name: Test base
+        if: env.BUILD == 'true'
         run: make test-base
 
       - name: Test go
+        if: env.BUILD == 'true'
         run: make test-go
 
       - name: Test node
+        if: env.BUILD == 'true'
         run: make test-node
 
       - name: Test bun
+        if: env.BUILD == 'true'
         run: make test-bun
 
       - name: Test python
+        if: env.BUILD == 'true'
         run: make test-python
 
       - name: Test dotnet
+        if: env.BUILD == 'true'
         run: make test-dotnet
 
       - name: Test java
+        if: env.BUILD == 'true'
         run: make test-java
 
       - name: Test nginx-ingress
+        if: env.BUILD == 'true'
         run: make test-nginx-ingress
 
       - name: Check distroless images
+        if: env.BUILD == 'true'
         run: make distroless
 
       # CIS Docker Benchmark. Fails on WARN/FATAL findings in the runtime
       # images; -dev findings are reported only. See scripts/dockle-images.sh.
       - name: Check image hardening (Dockle)
+        if: env.BUILD == 'true'
         run: scripts/dockle-images.sh
         env:
           DOCKLE: goodwithtech/dockle:v0.4.15
@@ -112,19 +156,20 @@ jobs:
       # vulnerability database (~3 GB unpacked) is downloaded once and shared
       # by parallel scans; see scripts/scan-images.sh.
       - name: Scan images
+        if: env.BUILD == 'true'
         run: scripts/scan-images.sh "${{ matrix.arch }}"
         env:
           GRYPE: anchore/grype:v0.119.0
 
       # Pull requests from forks get a read-only token and can't upload.
       - name: Upload runtime scan results to code scanning
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: env.BUILD == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           sarif_file: scan/runtime
 
       - name: Upload dev scan results to code scanning
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: env.BUILD == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           sarif_file: scan/dev
@@ -171,8 +216,11 @@ jobs:
 
   manifest:
     name: publish multi-arch images
-    needs: build
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [changes, build]
+    if: >-
+      github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       needs.changes.outputs.images == 'true')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
