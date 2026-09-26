@@ -5,10 +5,13 @@
 #
 # Writes table and SARIF results to scan/runtime/ and scan/dev/ (code
 # scanning accepts at most 20 runs per upload) and a Markdown summary to
-# $GITHUB_STEP_SUMMARY. The vulnerability database is downloaded once and
+# $GITHUB_STEP_SUMMARY. OpenVEX documents in vex/ are applied: "not_affected"
+# and "fixed" statements drop a finding, "affected" ones document it (see
+# docs/compliance.md). The vulnerability database is downloaded once and
 # shared by every scan, which run SCAN_JOBS (default 4) at a time. SCAN_REFS
 # overrides the image list, which otherwise comes from the bake default group.
 set -euo pipefail
+shopt -s nullglob
 
 arch="${1:?usage: scan-images.sh <arch>}"
 : "${GRYPE:?set GRYPE to the Grype image}"
@@ -26,11 +29,13 @@ scan_one() {
     *-dev) dir=scan/dev ;;
     *) dir=scan/runtime ;;
   esac
+  # $vex_args is a list of flags, split on purpose.
+  # shellcheck disable=SC2086
   docker run --rm \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$db:/db" -e GRYPE_DB_CACHE_DIR=/db -e GRYPE_DB_AUTO_UPDATE=false \
-    -v "$PWD/$dir:/scan" \
-    "$GRYPE" "$ref" --only-fixed --quiet \
+    -v "$PWD/$dir:/scan" -v "$PWD/vex:/vex:ro" \
+    "$GRYPE" "$ref" --only-fixed --quiet $vex_args \
     -o "table=/scan/$name.txt" -o "sarif=/scan/$name.sarif"
   # A distinct category per image and arch keeps code scanning from treating
   # the uploads as one run.
@@ -38,8 +43,10 @@ scan_one() {
     "$dir/$name.sarif" > "$dir/$name.tmp"
   mv "$dir/$name.tmp" "$dir/$name.sarif"
 }
+vex_args=""
+for f in vex/*.json; do vex_args+=" --vex /vex/${f#vex/}"; done
 export -f scan_one
-export GRYPE db arch
+export GRYPE db arch vex_args
 
 refs="${SCAN_REFS:-$(docker buildx bake --print 2>/dev/null | jq -r '.target[].tags[0]' | sort)}"
 # $1 is expanded by the child shell xargs starts, hence the single quotes.
@@ -47,7 +54,6 @@ refs="${SCAN_REFS:-$(docker buildx bake --print 2>/dev/null | jq -r '.target[].t
 echo "$refs" | xargs -P "$jobs" -I{} bash -c 'scan_one "$1"' _ {}
 
 # Summary in a stable order once all scans are done.
-shopt -s nullglob
 for table in scan/runtime/*.txt scan/dev/*.txt; do
   ref="$(basename "$table" .txt | sed 's/_/:/')"
   {

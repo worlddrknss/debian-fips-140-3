@@ -116,6 +116,11 @@ List every package the files need, including dependencies not already in the dis
 # Build provenance, signed through GitHub's Sigstore instance
 gh attestation verify oci://ghcr.io/worlddrknss/debian-fips-base:latest --owner worlddrknss
 
+# Image signature (cosign keyless, logged in Sigstore's public transparency log)
+cosign verify ghcr.io/worlddrknss/debian-fips-base:latest \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/worlddrknss/debian-fips-140-3/'
+
 # SBOM (SPDX) attached at build time
 docker buildx imagetools inspect ghcr.io/worlddrknss/debian-fips-base:latest \
   --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
@@ -126,6 +131,9 @@ docker inspect ghcr.io/worlddrknss/debian-fips-base:latest --format '{{ json .Co
 
 Every published build also gets a [GitHub Release](https://github.com/worlddrknss/debian-fips-140-3/releases)
 listing each image's digest and FIPS module, with SPDX SBOMs attached.
+
+For how the images map to NIST SP 800-53, 800-190, 800-52r2, 800-131A and 800-218 (and
+CJIS), with the test or file behind each claim, see [docs/compliance.md](docs/compliance.md).
 
 ## What is enforced
 

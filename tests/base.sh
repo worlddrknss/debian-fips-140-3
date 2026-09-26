@@ -76,6 +76,21 @@ if [ -d /var/lib/dpkg/status.d ]; then
     [ -f "/usr/share/doc/$pkg/copyright" ] || fail "no copyright file for package $pkg"
   done
   pass "every installed package ships its copyright file"
+
+  # NIST SP 800-190 / 800-53 CM-7: distroless images carry no privilege
+  # escalation paths and nothing a non-root process could tamper with.
+  # find exits non-zero on directories the test user cannot read; its output
+  # is what matters.
+  privileged="$(find / -xdev -type f -perm /6000 2>/dev/null || true)"
+  [ -z "$privileged" ] || fail "setuid/setgid files: $privileged"
+  pass "no setuid or setgid files"
+
+  writable="$(find / -xdev ! -type l -perm -0002 ! -perm -1000 2>/dev/null || true)"
+  [ -z "$writable" ] || fail "world-writable paths: $writable"
+  pass "no world-writable paths (other than sticky directories)"
+
+  [ ! -e /etc/shadow ] || fail "/etc/shadow is present"
+  pass "no password database (/etc/shadow)"
 fi
 
 # Dev variants ship install-packages for building app-specific distroless runtimes.

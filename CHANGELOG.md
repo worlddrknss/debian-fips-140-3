@@ -10,6 +10,13 @@ with SBOMs rather than changelog entries.
 
 ### Added
 
+- NIST hardening: distroless images are tested for setuid/setgid files, world-writable paths and
+  `/etc/shadow`; Dockle (CIS Docker Benchmark) runs in CI and fails on runtime-image findings.
+- cosign keyless signatures on every published image.
+- A daily check that rebuilds the images when Debian publishes a security update for a package
+  in them.
+- OpenVEX statements for known findings ([vex/](vex/)), applied to the Grype scans.
+- [docs/compliance.md](docs/compliance.md): NIST and CJIS control mapping with evidence.
 - `install-packages` in every `-dev` image, so apps can build their own distroless runtime with
   extra Debian packages (fonts, `libstdc++`, ...), keeping copyright files and SBOM records.
 - `debian-fipsbase-bun`: `node` is a symlink to Bun (Node.js compatibility mode, as in the

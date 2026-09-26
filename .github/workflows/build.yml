@@ -99,6 +99,13 @@ jobs:
       - name: Check distroless images
         run: make distroless
 
+      # CIS Docker Benchmark. Fails on WARN/FATAL findings in the runtime
+      # images; -dev findings are reported only. See scripts/dockle-images.sh.
+      - name: Check image hardening (Dockle)
+        run: scripts/dockle-images.sh
+        env:
+          DOCKLE: goodwithtech/dockle:v0.4.15
+
       # Report-only: findings go to the job summary and to code scanning, and
       # never fail the build. Only vulnerabilities with an available fix are
       # reported, since those are the ones a rebuild or bump can resolve. The
@@ -221,8 +228,14 @@ jobs:
           echo "subjects=$(jq -c . subjects.json)" >> "$GITHUB_OUTPUT"
 
   # Signs a SLSA build provenance attestation for each published multi-arch
-  # image with GitHub's Sigstore instance and stores it in GHCR. Verify with:
+  # image with GitHub's Sigstore instance and stores it in GHCR, and signs the
+  # image itself with cosign. Verify with:
   #   gh attestation verify oci://ghcr.io/<owner>/<image>:<tag> --owner <owner>
+  #   cosign verify ghcr.io/<owner>/<image>:<tag> --certificate-oidc-issuer \
+  #     https://token.actions.githubusercontent.com --certificate-identity-regexp \
+  #     '^https://github.com/<owner>/debian-fips-140-3/'
+  # (The Sigstore trust roots differ: attestations use GitHub's, cosign the
+  # public-good instance.)
   attest:
     name: attest (${{ matrix.subject.tag }} ${{ matrix.subject.name }})
     needs: manifest
@@ -248,6 +261,16 @@ jobs:
           subject-name: ${{ matrix.subject.name }}
           subject-digest: ${{ matrix.subject.digest }}
           push-to-registry: true
+
+      # Keyless cosign signature on the image itself (GitHub OIDC identity,
+      # logged in Sigstore's public transparency log), so admission policies
+      # and `cosign verify` can require it. See README "Verifying an image".
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image
+        env:
+          IMAGE: ${{ matrix.subject.name }}@${{ matrix.subject.digest }}
+        run: cosign sign --yes "$IMAGE"
 
   # One GitHub Release per published build, with a readable summary and the
   # SPDX SBOM of every image. The 10 newest build releases are kept.
