@@ -1,0 +1,114 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/worlddrknss/debian-fips-140-3/vex/debian-fips-java.openvex.json",
+  "author": "debian-fips-140-3 maintainers",
+  "timestamp": "2026-09-25T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-8763",
+        "aliases": [
+          "GHSA-9pwp-9qqc-pr26"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/debian-fips-java?repository_url=ghcr.io/worlddrknss/debian-fips-java",
+          "subcomponents": [
+            {
+              "@id": "pkg:maven/org.bouncycastle/bc-fips@2.1.1"
+            }
+          ]
+        }
+      ],
+      "status": "affected",
+      "action_statement": "bc-fips stays at 2.1.1, the only version CMVP certificate #4943 validates. The fix is in bc-fips 2.1.3, which is not validated; moving to it would mean running an unvalidated module. The image will move to a validated release containing the fix once CMVP lists one. Until then, don't rely on X.509 name constraints alone to restrict what a constrained CA can issue for; also pin or allow-list the expected certificates or issuers where that matters.",
+      "timestamp": "2026-09-25T00:00:00Z"
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-8798",
+        "aliases": [
+          "GHSA-v6w3-qrh8-qccc"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/debian-fips-java?repository_url=ghcr.io/worlddrknss/debian-fips-java",
+          "subcomponents": [
+            {
+              "@id": "pkg:maven/org.bouncycastle/bc-fips@2.1.1"
+            }
+          ]
+        }
+      ],
+      "status": "affected",
+      "action_statement": "bc-fips stays at 2.1.1, the only version CMVP certificate #4943 validates. The fix is in bc-fips 2.1.3, which is not validated; moving to it would mean running an unvalidated module. The image will move to a validated release containing the fix once CMVP lists one. The unbounded retry only occurs when the CPU's hardware entropy instructions keep failing, which indicates faulty hardware; monitor for stalled entropy reads.",
+      "timestamp": "2026-09-25T00:00:00Z"
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-13506",
+        "aliases": [
+          "GHSA-qp49-qgx5-5m26"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/debian-fips-java?repository_url=ghcr.io/worlddrknss/debian-fips-java",
+          "subcomponents": [
+            {
+              "@id": "pkg:maven/org.bouncycastle/bc-fips@2.1.1"
+            }
+          ]
+        }
+      ],
+      "status": "affected",
+      "action_statement": "bc-fips stays at 2.1.1, the only version CMVP certificate #4943 validates. The fix is in bc-fips 2.1.3, which is not validated; moving to it would mean running an unvalidated module. The image will move to a validated release containing the fix once CMVP lists one. Until then, limit the size of untrusted ASN.1 input (certificates, CMS messages) before parsing it, and apply request size and time limits.",
+      "timestamp": "2026-09-25T00:00:00Z"
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-13505",
+        "aliases": [
+          "GHSA-98j2-6v39-78w8"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/debian-fips-java?repository_url=ghcr.io/worlddrknss/debian-fips-java",
+          "subcomponents": [
+            {
+              "@id": "pkg:maven/org.bouncycastle/bc-fips@2.1.1"
+            }
+          ]
+        }
+      ],
+      "status": "affected",
+      "action_statement": "bc-fips stays at 2.1.1, the only version CMVP certificate #4943 validates. The fix is in bc-fips 2.1.3, which is not validated; moving to it would mean running an unvalidated module. The image will move to a validated release containing the fix once CMVP lists one. Until then, keep sensitive key material in as few long-lived objects as possible, and treat process memory of these containers as sensitive (no core dumps; restrict debugging access).",
+      "timestamp": "2026-09-25T00:00:00Z"
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2025-12194",
+        "aliases": [
+          "GHSA-jv6h-4262-q663"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/debian-fips-java?repository_url=ghcr.io/worlddrknss/debian-fips-java",
+          "subcomponents": [
+            {
+              "@id": "pkg:maven/org.bouncycastle/bc-fips@2.1.1"
+            }
+          ]
+        }
+      ],
+      "status": "affected",
+      "action_statement": "bc-fips stays at 2.1.1, the only version CMVP certificate #4943 validates. The fix is in bc-fips 2.1.2, which is not validated; moving to it would mean running an unvalidated module. The image will move to a validated release containing the fix once CMVP lists one. Until then, limit the size of untrusted input and apply request size and time limits.",
+      "timestamp": "2026-09-25T00:00:00Z"
+    }
+  ]
+}

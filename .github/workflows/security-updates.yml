@@ -1,0 +1,47 @@
+name: security-updates
+
+# NIST SP 800-53 SI-2 (flaw remediation): the images are rebuilt weekly, and
+# this daily check rebuilds them early when Debian has published a security
+# update for any package in them. It asks each published -dev image (the
+# distroless images are assembled from the same packages) what apt would
+# upgrade from the security archive.
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write # to start the build workflow
+    steps:
+      - name: Look for pending Debian security updates
+        id: check
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          found=""
+          for image in debian-fips-base debian-fips-node debian-fipsbase-bun debian-fips-python \
+                       debian-fips-dotnet debian-fips-java debian-fips-nginx-ingress; do
+            ref="ghcr.io/$owner/$image:latest-dev"
+            updates="$(docker run --rm --user 0 --entrypoint sh "$ref" -c \
+              'apt-get update -qq >/dev/null && apt-get -s upgrade 2>/dev/null' \
+              | awk '/^Inst / && /-security/ {print $2}' | sort -u | tr '\n' ' ')"
+            echo "$ref: ${updates:-none}"
+            [ -z "$updates" ] || found="$found $image: $updates;"
+          done
+          {
+            echo "### Pending Debian security updates"
+            echo "${found:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "rebuild=$([ -n "$found" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Rebuild and publish
+        if: steps.check.outputs.rebuild == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref main
