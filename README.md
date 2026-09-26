@@ -8,8 +8,8 @@ Controller whose cryptography runs
 through FIPS 140-3 validated modules. Each image is configured to reject non-approved
 algorithms and allow only 256-bit TLS ciphers (the CJIS Security Policy minimum). Every
 enforcement claim below is checked by the test suite on every build. Everything is built from
-open-source components, and every image is published with an SBOM, SLSA provenance and a signed
-build attestation.
+open-source components, and every image is published with an SBOM, a signed SLSA provenance
+attestation and a cosign signature.
 
 > [!IMPORTANT]
 > **These images are not FIPS 140-3 certified, and nothing can make a container image
@@ -130,7 +130,9 @@ docker inspect ghcr.io/worlddrknss/debian-fips-base:latest --format '{{ json .Co
 ```
 
 Every published build also gets a [GitHub Release](https://github.com/worlddrknss/debian-fips-140-3/releases)
-listing each image's digest and FIPS module, with SPDX SBOMs attached.
+listing each image's digest and FIPS module, with SPDX SBOMs attached, each with a Sigstore
+bundle (`<sbom>.sigstore.json`) to verify it with `cosign verify-blob`. The status of known
+vulnerabilities that remain in an image is recorded as OpenVEX in [vex/](vex/).
 
 For how the images map to NIST SP 800-53, 800-190, 800-52r2, 800-131A and 800-218 (and
 CJIS), with the test or file behind each claim, see [docs/compliance.md](docs/compliance.md).
@@ -142,15 +144,16 @@ of both provider versions.
 
 | Image | Checks |
 | --- | --- |
-| base (and every image built on it) | Only the `fips` and `base` OpenSSL providers are loaded; the legacy provider isn't installed. MD5 and RSA-1024 are rejected. TLS 1.0/1.1 are refused; TLS allows only AES-256-GCM. Every Debian package ships its copyright file. On `-pqc`: ML-DSA, ML-KEM and hybrid `SecP256r1MLKEM768` TLS. |
+| base (and every image built on it) | Only the `fips` and `base` OpenSSL providers are loaded; the legacy provider isn't installed. MD5 and RSA-1024 are rejected. TLS 1.0/1.1 are refused; TLS allows only AES-256-GCM. Every Debian package ships its copyright file. `-dev` images include `install-packages`. On `-pqc`: ML-DSA, ML-KEM and hybrid `SecP256r1MLKEM768` TLS. |
 | node | `crypto.getFips() === 1`. Node refuses to start if the provider can't load. MD5 and ChaCha20-Poly1305 are rejected. TLS negotiates AES-256 and refuses AES-128-only servers. |
 | python | `hashlib`/`hmac` run in OpenSSL; MD5 and BLAKE2 are rejected for security use. `ssl` negotiates AES-256 and refuses AES-128-only servers. The `cryptography` wheel's bundled OpenSSL runs in FIPS mode. |
 | dotnet | MD5, HMAC-MD5 and 3DES encryption are rejected. `SslStream` negotiates AES-256 and refuses AES-128-only servers. |
 | java | The only providers are BCFIPS, BCJSSE and an entropy provider; BC is in approved-only mode. MD5, HMAC-MD5, SHA1PRNG and 3DES encryption are rejected. TLS (BCJSSE) negotiates AES-256 and refuses AES-128-only servers. |
 | go | Binaries build with `GOFIPS140`, run in FIPS mode and reject MD5 on the distroless base. |
 | nginx-ingress | NGINX runs on the system OpenSSL; the controller is built with `GOFIPS140`; every shipped module loads. Client TLS negotiates AES-256 and refuses AES-128-only clients; backend TLS refuses an AES-128-only upstream (502). On `-pqc`: hybrid `X25519MLKEM768`. NGINX binds port 80 as UID 101 with privileged ports restricted. |
-| bun | Documents the boundary: `bun` still computes MD5 (see [bun](#bun)). |
-| all distroless | No shell; runs as 65532. |
+| bun | `node` runs Bun in Node.js compatibility mode, and `#!/usr/bin/env node` launchers work (including distroless). Documents the boundary: `bun` still computes MD5 (see [bun](#bun)). |
+| all distroless | No shell; runs as 65532. No setuid/setgid files, no world-writable paths, no `/etc/shadow`. |
+| all images | [Dockle](scripts/dockle-images.sh) (CIS Docker Benchmark): any WARN or FATAL finding on a distroless image fails the build. |
 
 ## Limitations
 
@@ -182,8 +185,7 @@ Read these before relying on the images for compliance.
   built-in SHA-256, not the FIPS module. Setting `ssl-ciphers` in the controller's ConfigMap
   replaces the AES-256 default for client TLS 1.2, and backend TLS 1.2 is fixed to AES-256-GCM
   regardless of a policy's `ciphers`. The `-dev` variant's `xslt` module links `libgcrypt`, a
-  non-validated library used only by EXSLT crypto functions; distroless leaves `xslt` out. The
-  image has been tested standalone, not against a live cluster.
+  non-validated library used only by EXSLT crypto functions; distroless leaves `xslt` out.
 - **The `-pqc` provider (3.5.4) isn't validated yet** (see [Tags](#tags)).
 - **`-dev` images include apt**, which verifies repository signatures with `sqv` (nettle).
   That's crypto outside the FIPS boundary, used only when packages are installed. apt's TLS
@@ -310,12 +312,16 @@ built from its source release following upstream's Debian image, with these diff
   `ssl_ciphers` to AES-256-GCM (NGINX's own default allows AES-128 for TLS 1.2) and include
   [`fips-tls-policy.conf`](images/nginx-ingress/fips-tls-policy.conf), which holds backend TLS
   1.2 to AES-256-GCM. TLS 1.3 follows the system policy in both directions.
+- The controller runs `nginx` (reload, quit) through `sh -c`; the build patches it to run the
+  command directly, since the distroless image has no shell. The image runs from `/`, where the
+  controller reads its templates, as upstream's does.
 - NGINX Agent isn't included.
 
 Distroless ships NGINX with the modules the controller loads (`njs`, `otel`, `acme`); `-dev` has
 every upstream module. Both run as UID 101 like upstream, with `cap_net_bind_service` on NGINX
 and the controller, so they bind ports 80 and 443 without root. Deploy with the upstream Helm
-chart or manifests, overriding the image.
+chart or manifests, overriding the image. The maintainer runs the distroless `-pqc` variant as
+the ingress of a production k3s cluster.
 
 ### bun
 
@@ -324,6 +330,10 @@ builds BoringSSL into its binary and ignores the system OpenSSL, so its TLS, `fe
 `node:crypto` and WebCrypto are outside the FIPS boundary, and the 256-bit TLS policy doesn't
 apply to them. Use it for projects that run on Bun where that's acceptable. Workloads that need
 FIPS should run on `debian-fips-node`.
+
+As in the official Bun images, `node` is a symlink to Bun (Node.js compatibility mode), and the
+distroless variant includes `/usr/bin/env`, so npm packages' `#!/usr/bin/env node` launchers
+(`node_modules/.bin/prisma`, for example) run unchanged.
 
 ## Building and testing
 
@@ -340,11 +350,15 @@ distroless image plus busybox and the `openssl` CLI.
 ## Updates and CI
 
 - [build.yml](.github/workflows/build.yml) builds and tests every image on native amd64 and
-  arm64 runners for each pull request, on `main`, and weekly. The weekly build reruns
-  `apt-get upgrade`, so Debian security fixes land within a week. Images are scanned with Grype
-  (results in code scanning; report-only). On `main`, images are published with SBOMs,
-  provenance and attestations, a GitHub Release records the build, and the registry keeps the 20
-  newest tagged images per package (at least the 5 most recent builds).
+  arm64 runners for each pull request, on `main`, and weekly; every build reruns
+  `apt-get upgrade`. Images are checked with Dockle (failing on distroless findings) and scanned
+  with Grype (results in code scanning; report-only, with the [OpenVEX](vex/) statements
+  applied). On `main`, images are published with SBOMs, provenance attestations and cosign
+  signatures, a GitHub Release records the build with signed SBOMs, and the registry keeps the
+  20 newest tagged images per package (at least the 5 most recent builds).
+- [security-updates.yml](.github/workflows/security-updates.yml) checks daily whether Debian has
+  published a security update for a package in the images, and rebuilds them if so, so Debian
+  security fixes land within a day.
 - [update-pins.yml](.github/workflows/update-pins.yml) opens a pull request weekly when a pinned
   upstream release has a newer version (Debian digest, Node.js, npm, Go, Bun, .NET, Bouncy Castle
   TLS). **The OpenSSL FIPS provider and `bc-fips` versions are never changed automatically**,
@@ -355,8 +369,8 @@ distroless image plus busybox and the `openssl` CLI.
   check the workflows and the repository's security practices; Dependabot keeps the pinned
   actions current.
 
-See [SECURITY.md](SECURITY.md) to report a vulnerability and [CHANGELOG.md](CHANGELOG.md) for
-changes.
+See [SECURITY.md](SECURITY.md) to report a vulnerability, [CHANGELOG.md](CHANGELOG.md) for
+changes, and [docs/compliance.md](docs/compliance.md) for the NIST and CJIS control mapping.
 
 ## License
 
