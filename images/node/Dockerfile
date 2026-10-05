@@ -63,7 +63,7 @@ FROM ${BASE_DEV_IMAGE} AS dev
 ARG NODE_VERSION=24.21.0
 # The npm bundled with Node.js lags behind npm's own security fixes, so a newer
 # npm within the same major version is installed over it.
-ARG NPM_VERSION=11.20.0
+ARG NPM_VERSION=11.21.0
 
 LABEL org.opencontainers.image.title="debian-fips-node" \
       org.opencontainers.image.description="Node.js ${NODE_VERSION} running its crypto through the OpenSSL FIPS provider (dev variant: npm, shell and apt)"

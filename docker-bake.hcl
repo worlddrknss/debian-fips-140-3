@@ -71,7 +71,7 @@ variable "NODE_VERSION" {
 }
 
 variable "NPM_VERSION" {
-  default = "11.20.0"
+  default = "11.21.0"
 }
 
 variable "BUN_VERSION" {
