@@ -416,11 +416,11 @@ jobs:
             echo "No open pull request for $GITHUB_REF_NAME."
             exit 0
           fi
-          set -- $pr
+          read -r number head <<<"$pr"
           # Only merge the commit this run built.
-          if [ "$2" != "$GITHUB_SHA" ]; then
-            echo "::error::The branch moved since this build ($2 vs $GITHUB_SHA); not merging."
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::The branch moved since this build ($head vs $GITHUB_SHA); not merging."
             exit 1
           fi
-          gh pr merge "$1" -R "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$GITHUB_SHA"
+          gh pr merge "$number" -R "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$GITHUB_SHA"
           gh workflow run build.yml -R "$GITHUB_REPOSITORY" --ref main
