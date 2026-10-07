@@ -388,7 +388,8 @@ distroless image plus busybox and the `openssl` CLI.
   security fixes land within a day.
 - [update-pins.yml](.github/workflows/update-pins.yml) opens a pull request weekly when a pinned
   upstream release has a newer version (Debian digest, Node.js, npm, Go, Bun, .NET, Bouncy Castle
-  TLS). **The OpenSSL FIPS provider and `bc-fips` versions are never changed automatically**,
+  TLS), builds it, and merges it once lint and both architecture builds pass, then publishes
+  from main. **The OpenSSL FIPS provider and `bc-fips` versions are never changed automatically**,
   since only certified versions belong there. The NGINX Ingress Controller and NGINX versions are
   bumped by hand, since the template patch has to be checked against each release. Python and
   OpenJDK update through apt.

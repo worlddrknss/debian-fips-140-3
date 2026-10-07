@@ -390,3 +390,37 @@ jobs:
           exclude-tags: latest,latest-dev,latest-pqc,latest-pqc-dev
           delete-untagged: true
           validate: true
+
+  # Closes the loop on update-pins. That workflow opens its pull request with
+  # GITHUB_TOKEN, which can't trigger pull_request runs, so it dispatches this
+  # workflow on the branch instead. Once lint and both builds pass here, the
+  # pull request is merged. A merge made with GITHUB_TOKEN doesn't trigger the
+  # push build on main either, so main is dispatched explicitly to publish.
+  # Never runs for human branches: only update-pins/* dispatches.
+  automerge:
+    needs: [lint, build]
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/update-pins/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Merge the pin update and publish from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr=$(gh pr view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --json number,state,headRefOid \
+            -q 'select(.state == "OPEN") | "\(.number) \(.headRefOid)"')
+          if [ -z "$pr" ]; then
+            echo "No open pull request for $GITHUB_REF_NAME."
+            exit 0
+          fi
+          set -- $pr
+          # Only merge the commit this run built.
+          if [ "$2" != "$GITHUB_SHA" ]; then
+            echo "::error::The branch moved since this build ($2 vs $GITHUB_SHA); not merging."
+            exit 1
+          fi
+          gh pr merge "$1" -R "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$GITHUB_SHA"
+          gh workflow run build.yml -R "$GITHUB_REPOSITORY" --ref main
