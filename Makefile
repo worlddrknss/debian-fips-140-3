@@ -5,7 +5,7 @@ HADOLINT     := hadolint/hadolint:v2.15.1
 SHELLCHECK   := koalaman/shellcheck:v0.11.0
 ACTIONLINT   := rhysd/actionlint:1.7.12
 MARKDOWNLINT := davidanson/markdownlint-cli2:v0.23.3
-GO           := golang:1.27.1
+GO           := golang:1.27.2
 
 DOCKER_RUN := docker run --rm -v "$(CURDIR):/repo" -w /repo
 # Mounts the test suite. Distroless images are tested through their :test
