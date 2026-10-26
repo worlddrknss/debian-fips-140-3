@@ -17,7 +17,7 @@
 ARG BASE_IMAGE=debian-fips-base:latest
 ARG BASE_DEV_IMAGE=debian-fips-base:latest-dev
 ARG BASE_TEST_IMAGE=debian-fips-base:test
-ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
 
 # ---------------------------------------------------------------------------
 # Download and verify the Bun release binary.
@@ -26,7 +26,7 @@ FROM ${DEBIAN_IMAGE} AS bun-download
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG BUN_VERSION=1.4.2
+ARG BUN_VERSION=1.4.4
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -39,12 +39,12 @@ RUN case "${TARGETARCH}" in \
       *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && case "${BUN_VERSION}-${bun_arch}" in \
-      1.4.2-x64) sha256=36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913 ;; \
-      1.4.2-aarch64) sha256=54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7 ;; \
+      1.4.4-x64) sha256=bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c ;; \
+      1.4.4-aarch64) sha256=baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e ;; \
       *) echo "Unsupported BUN_VERSION/arch: ${BUN_VERSION}/${bun_arch}" >&2; exit 1 ;; \
     esac \
  && case "${BUN_VERSION}" in \
-      1.4.2) license_sha256=b9caf52728691b4057e371232c221a132883198be2f3d2ddf92c90404c984b1a ;; \
+      1.4.4) license_sha256=362fe32c954ec829240bd7429c53d705eef08c6bfa45ffc2d02005f857cba4dd ;; \
       *) echo "No pinned LICENSE.md checksum for BUN_VERSION ${BUN_VERSION}" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /tmp/bun.zip \
@@ -70,7 +70,7 @@ RUN case "${TARGETARCH}" in \
 # ---------------------------------------------------------------------------
 FROM ${BASE_DEV_IMAGE} AS dev
 
-ARG BUN_VERSION=1.4.2
+ARG BUN_VERSION=1.4.4
 
 LABEL org.opencontainers.image.title="debian-fipsbase-bun" \
       org.opencontainers.image.description="Bun ${BUN_VERSION} on the FIPS base image (dev variant: shell and apt). Bun's own crypto (BoringSSL) is NOT FIPS validated." \
@@ -93,7 +93,7 @@ RUN mkdir -p /out/usr/bin /out/usr/share/doc/coreutils \
 
 FROM ${BASE_IMAGE} AS runtime
 
-ARG BUN_VERSION=1.4.2
+ARG BUN_VERSION=1.4.4
 
 LABEL org.opencontainers.image.title="debian-fipsbase-bun" \
       org.opencontainers.image.description="Distroless Bun ${BUN_VERSION} on the FIPS base image. Bun's own crypto (BoringSSL) is NOT FIPS validated." \
