@@ -16,7 +16,7 @@
 ARG BASE_IMAGE=debian-fips-base:latest
 ARG BASE_DEV_IMAGE=debian-fips-base:latest-dev
 ARG BASE_TEST_IMAGE=debian-fips-base:test
-ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
 
 # ---------------------------------------------------------------------------
 # Download and verify the official Node.js release.
@@ -25,7 +25,7 @@ FROM ${DEBIAN_IMAGE} AS node-download
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG NODE_VERSION=24.21.0
+ARG NODE_VERSION=24.22.1
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -38,8 +38,8 @@ RUN case "${TARGETARCH}" in \
       *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && case "${NODE_VERSION}-${node_arch}" in \
-      24.21.0-x64) sha256=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6 ;; \
-      24.21.0-arm64) sha256=6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2 ;; \
+      24.22.1-x64) sha256=6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6 ;; \
+      24.22.1-arm64) sha256=dbabf7a1cbf947e6059ffad2c27b80041db97dea1e553b62afdee7f13fca336e ;; \
       *) echo "Unsupported NODE_VERSION/arch: ${NODE_VERSION}/${node_arch}" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /tmp/node.tar.xz \
@@ -60,10 +60,10 @@ RUN case "${TARGETARCH}" in \
 # ---------------------------------------------------------------------------
 FROM ${BASE_DEV_IMAGE} AS dev
 
-ARG NODE_VERSION=24.21.0
+ARG NODE_VERSION=24.22.1
 # The npm bundled with Node.js lags behind npm's own security fixes, so a newer
 # npm within the same major version is installed over it.
-ARG NPM_VERSION=11.21.0
+ARG NPM_VERSION=11.21.1
 
 LABEL org.opencontainers.image.title="debian-fips-node" \
       org.opencontainers.image.description="Node.js ${NODE_VERSION} running its crypto through the OpenSSL FIPS provider (dev variant: npm, shell and apt)"
@@ -95,7 +95,7 @@ COPY --from=node-download /out/share/doc/node/LICENSE /rootfs/usr/local/share/do
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS runtime
 
-ARG NODE_VERSION=24.21.0
+ARG NODE_VERSION=24.22.1
 
 LABEL org.opencontainers.image.title="debian-fips-node" \
       org.opencontainers.image.description="Distroless Node.js ${NODE_VERSION} running its crypto through the OpenSSL FIPS provider"

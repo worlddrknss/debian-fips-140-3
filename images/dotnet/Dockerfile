@@ -16,7 +16,7 @@
 ARG BASE_IMAGE=debian-fips-base:latest
 ARG BASE_DEV_IMAGE=debian-fips-base:latest-dev
 ARG BASE_TEST_IMAGE=debian-fips-base:test
-ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
 
 # ---------------------------------------------------------------------------
 # Download and verify the ASP.NET Core runtime and the SDK.
@@ -25,8 +25,8 @@ FROM ${DEBIAN_IMAGE} AS dotnet-download
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG DOTNET_VERSION=10.0.12
-ARG DOTNET_SDK_VERSION=10.0.401
+ARG DOTNET_VERSION=10.0.14
+ARG DOTNET_SDK_VERSION=10.0.403
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -39,13 +39,13 @@ RUN case "${TARGETARCH}" in \
       *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && case "${DOTNET_VERSION}-${rid}" in \
-      10.0.12-x64) runtime_sha512=c489fc3a9dcc85f24f2d52e9a81b46fdf51affc8a360d008dbd5e3b7ce524969adc4a54f555ad13e29b822f59ed1cae9785608cbac2282f2c9c4fda45c21c7d1 ;; \
-      10.0.12-arm64) runtime_sha512=9ba9889057a8b8a8371099f1fc99c6710b723fd0359941183b9a5040b7d9fb7f03bc06b7dad100969f43f852da88b6d843f6c7983c86691594612043233f2e02 ;; \
+      10.0.14-x64) runtime_sha512=dd024fd2616926a555b75cbf7a836f6dce998199f0596d9d75676dca2b9d59c8ee8673c6ac23473c0f1a4bdd59eb5cd02fe9ab097eeaf2dd8c8bd117c85e7031 ;; \
+      10.0.14-arm64) runtime_sha512=b5d5ef8eaee3a0ebd24a359be9a0a4cf67b80b8e2e39b55427778eabad62bf6390ab48100d3b134d152436baa1a3bbff14a576fea1a2f2f7a396707056361afb ;; \
       *) echo "Unsupported DOTNET_VERSION/arch: ${DOTNET_VERSION}/${rid}" >&2; exit 1 ;; \
     esac \
  && case "${DOTNET_SDK_VERSION}-${rid}" in \
-      10.0.401-x64) sdk_sha512=51c8b999af9e8dd9998c9edc5944e19a90788862068acd38694e098889054ce8c23d4f0c5cccfa16bf187d044562359e5ee69a9f8ad0bbe913ba90311fbce25b ;; \
-      10.0.401-arm64) sdk_sha512=58ace73ced6b4360754689a686bdfb8a317f4da6cb8bb416dbc7d0ba9f47e43e3c09f5eb1f1a1cfaacbd10df9558da4882bf2a5e195d6ab56a02c1f9f76102ed ;; \
+      10.0.403-x64) sdk_sha512=b7b3d8461cf98b07d2552ce9199702fa3ad010ac2671a5f8cd5136f7534e50f6855ba7bbb02b11494563f1d04156276a31cda1103b900e5eecd0d9473dc7b9c5 ;; \
+      10.0.403-arm64) sdk_sha512=0966aa2b70f4677b8319be9df447a78a0dcd6164836425b55a68fd714f4023feb87b4cac21b9a996b79472ad54487cd0adcd2a9dfd570e2b2a1d26423a2baa9b ;; \
       *) echo "Unsupported DOTNET_SDK_VERSION/arch: ${DOTNET_SDK_VERSION}/${rid}" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /tmp/runtime.tar.gz \
@@ -64,8 +64,8 @@ RUN case "${TARGETARCH}" in \
 # ---------------------------------------------------------------------------
 FROM ${BASE_DEV_IMAGE} AS dev
 
-ARG DOTNET_VERSION=10.0.12
-ARG DOTNET_SDK_VERSION=10.0.401
+ARG DOTNET_VERSION=10.0.14
+ARG DOTNET_SDK_VERSION=10.0.403
 
 LABEL org.opencontainers.image.title="debian-fips-dotnet" \
       org.opencontainers.image.description=".NET SDK ${DOTNET_SDK_VERSION} (runtime ${DOTNET_VERSION}) with cryptography through the OpenSSL FIPS provider (dev variant: shell and apt)"
@@ -102,7 +102,7 @@ COPY --from=dotnet-download /runtime/ /rootfs/usr/share/dotnet/
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS runtime
 
-ARG DOTNET_VERSION=10.0.12
+ARG DOTNET_VERSION=10.0.14
 
 LABEL org.opencontainers.image.title="debian-fips-dotnet" \
       org.opencontainers.image.description="Distroless ASP.NET Core ${DOTNET_VERSION} runtime with cryptography through the OpenSSL FIPS provider"

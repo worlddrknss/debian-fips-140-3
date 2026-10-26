@@ -15,7 +15,7 @@
 # GOPROXY; images that fetch private modules over VCS should install git.
 
 ARG BASE_IMAGE=debian-fips-base:latest-dev
-ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
 
 # ---------------------------------------------------------------------------
 # Download and verify the Go toolchain, so curl stays out of the final image.
@@ -24,7 +24,7 @@ FROM ${DEBIAN_IMAGE} AS go-download
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.3
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -32,8 +32,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 RUN case "${GO_VERSION}-${TARGETARCH}" in \
-      1.27.1-amd64) sha256=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445 ;; \
-      1.27.1-arm64) sha256=3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec ;; \
+      1.27.3-amd64) sha256=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40 ;; \
+      1.27.3-arm64) sha256=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49 ;; \
       *) echo "Unsupported GO_VERSION/TARGETARCH: ${GO_VERSION}/${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /tmp/go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
@@ -46,7 +46,7 @@ RUN case "${GO_VERSION}-${TARGETARCH}" in \
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
 
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.3
 
 LABEL org.opencontainers.image.title="debian-fips-go" \
       org.opencontainers.image.description="Go ${GO_VERSION} building against the FIPS 140-3 Go Cryptographic Module" \

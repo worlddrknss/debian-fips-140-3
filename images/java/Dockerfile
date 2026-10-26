@@ -20,7 +20,7 @@
 ARG BASE_IMAGE=debian-fips-base:latest
 ARG BASE_DEV_IMAGE=debian-fips-base:latest-dev
 ARG BASE_TEST_IMAGE=debian-fips-base:test
-ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
 
 # ---------------------------------------------------------------------------
 # Download and verify the Bouncy Castle FIPS jars from Maven Central.
