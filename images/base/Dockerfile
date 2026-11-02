@@ -23,7 +23,7 @@
 #          FIPS 140-3, in CMVP review, NOT yet validated.
 
 # Pinned by multi-arch index digest so the assessed base is reproducible.
-ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
 ARG OPENSSL_FIPS_VERSION=3.1.2
 # CMVP certificate number for the provider, or "in-process", recorded as an
 # image label. docker-bake.hcl sets it from OPENSSL_FIPS_VERSION; the build
