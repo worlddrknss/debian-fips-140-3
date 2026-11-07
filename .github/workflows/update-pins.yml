@@ -1,7 +1,8 @@
 name: update-pins
 
 # Opens a pull request when a pinned upstream release (Debian digest, Node.js,
-# npm, Go, Bun, .NET, Bouncy Castle TLS/util) has a newer version. Checksums
+# npm, Go, Bun, .NET, Bouncy Castle TLS/util, NGINX Ingress Controller and
+# its NGINX) has a newer version. Checksums
 # are computed from the official release files; see scripts/update-pins.sh.
 on:
   schedule:

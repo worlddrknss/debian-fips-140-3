@@ -4,8 +4,9 @@
 #   scripts/update-pins.sh [summary-file]
 #
 # Checks the Debian base digest, Node.js (same major), npm (same major), Go
-# (same minor), Bun, .NET (same channel) and the Bouncy Castle TLS/util jars
-# (same minor) against upstream, computes checksums from the official release
+# (same minor), Bun, .NET (same channel), the Bouncy Castle TLS/util jars
+# (same minor) and the NGINX Ingress Controller (same major, with the NGINX
+# version that release builds with) against upstream, computes checksums from the official release
 # files, and rewrites docker-bake.hcl and the Dockerfiles. Prints a Markdown
 # list of changes (also written to summary-file when given).
 #
@@ -143,6 +144,27 @@ for artifact in bctls-fips bcutil-fips; do
     changes+=("$artifact $current → $latest")
   fi
 done
+
+# --- NGINX Ingress Controller (same major) and its NGINX version ------------
+# The build fails if nginx.tmpl.patch no longer applies, and the test suite
+# checks the TLS policy, so a release that needs the patch reworked stops at
+# the pull request.
+current="$(bake_var NIC_VERSION)"
+current_nginx="$(bake_var NGINX_VERSION)"
+latest="$(curl -fsSL https://api.github.com/repos/nginx/kubernetes-ingress/releases/latest \
+  | jq -r .tag_name | sed 's/^v//')"
+if [ "${latest%%.*}" = "${current%%.*}" ] && [ "$current" != "$latest" ]; then
+  latest_nginx="$(curl -fsSL "https://raw.githubusercontent.com/nginx/kubernetes-ingress/v$latest/build/Dockerfile" \
+    | grep -oE '^ARG NGINX_OSS_VERSION=[0-9.]+' | cut -d= -f2)"
+  [ -n "$latest_nginx" ] || { echo "update-pins: no NGINX version in NIC $latest" >&2; exit 1; }
+  replace_version "$current" "$latest" docker-bake.hcl images/nginx-ingress/Dockerfile
+  set_checksum images/nginx-ingress/Dockerfile "$latest" \
+    "$(sha256_of "https://github.com/nginx/kubernetes-ingress/archive/refs/tags/v$latest.tar.gz")"
+  if [ "$current_nginx" != "$latest_nginx" ]; then
+    replace_version "$current_nginx" "$latest_nginx" docker-bake.hcl images/nginx-ingress/Dockerfile
+  fi
+  changes+=("NGINX Ingress Controller $current → $latest (NGINX $current_nginx → $latest_nginx)")
+fi
 
 if [ "${#changes[@]}" -eq 0 ]; then
   echo "All pins are current." | tee "$summary"

@@ -23,6 +23,8 @@ jobs:
       contents: read
       actions: write # to start the build workflow
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Look for pending Debian security updates
         id: check
         run: |
@@ -31,9 +33,7 @@ jobs:
           for image in debian-fips-base debian-fips-node debian-fipsbase-bun debian-fips-python \
                        debian-fips-dotnet debian-fips-java debian-fips-nginx-ingress; do
             ref="ghcr.io/$owner/$image:latest-dev"
-            updates="$(docker run --rm --user 0 --entrypoint sh "$ref" -c \
-              'apt-get update -qq >/dev/null && apt-get -s upgrade 2>/dev/null' \
-              | awk '/^Inst / && /-security/ {print $2}' | sort -u | tr '\n' ' ')"
+            updates="$(scripts/pending-security-updates.sh "$ref")"
             echo "$ref: ${updates:-none}"
             [ -z "$updates" ] || found="$found $image: $updates;"
           done
