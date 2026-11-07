@@ -387,7 +387,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # the release step looks back through main's history
+          fetch-depth: 0 # the release step compares with main
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -422,27 +422,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_TAG: ${{ needs.manifest.outputs.build-tag }}
-        # GITHUB_TOKEN can't create a tag on a commit that changes workflow
-        # files (it never has the workflows permission). In that case the
-        # release is tagged on the newest earlier commit that doesn't, and the
-        # notes keep naming the commit the images were built from.
+        # GITHUB_TOKEN can't create a tag on a commit whose workflow files
+        # differ from main's (it never has the workflows permission), which
+        # happens when main moved on with workflow changes during the build.
+        # The release is then tagged on main's current commit; the notes keep
+        # naming the commit the images were built from.
         run: |
+          git fetch -q origin main
           target="$GITHUB_SHA"
-          if ! git diff --quiet "$target^" "$target" -- .github/workflows; then
-            for c in $(git rev-list "$GITHUB_SHA^"); do
-              if git diff --quiet "$c^" "$c" -- .github/workflows 2>/dev/null; then target="$c"; break; fi
-            done
+          if ! git diff --quiet "$GITHUB_SHA" origin/main -- .github/workflows; then
+            target="$(git rev-parse origin/main)"
             {
               echo
-              echo "This release is tagged on \`${target::7}\`, the newest commit before \`${GITHUB_SHA::7}\` that"
-              echo "doesn't change workflow files, because GitHub Actions can't tag those commits."
+              echo "This release is tagged on \`${target::7}\` (main when the build finished), not on"
+              echo "\`${GITHUB_SHA::7}\`: main's workflow files changed during the build, and GitHub Actions"
+              echo "can't tag a commit whose workflow files differ from main's."
             } >> release/notes.md
           fi
           gh release create "build-$BUILD_TAG" release/sbom/*.spdx.json release/sbom/*.sigstore.json \
             --title "Build $BUILD_TAG" --notes-file release/notes.md --target "$target" --latest
           gh release list --limit 100 --json tagName --jq '.[].tagName' \
             | grep '^build-' | tail -n +11 \
-            | while read -r old; do gh release delete "$old" --yes --cleanup-tag; done
+            | while read -r old; do
+                gh release delete "$old" --yes --cleanup-tag \
+                  || echo "::warning::Couldn't delete the old release $old."
+              done
 
   cleanup:
     name: prune old images
