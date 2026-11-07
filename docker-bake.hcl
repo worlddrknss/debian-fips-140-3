@@ -43,7 +43,7 @@ variable "CACHE_ARCH" {
 }
 
 variable "DEBIAN_IMAGE" {
-  default = "debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a"
+  default = "debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2"
 }
 
 # Any new value reruns the base image's apt layer. CI sets the ISO week.
@@ -63,28 +63,28 @@ variable "OPENSSL_FIPS_PQC_VERSION" {
 }
 
 variable "GO_VERSION" {
-  default = "1.27.1"
+  default = "1.27.3"
 }
 
 variable "NODE_VERSION" {
-  default = "24.21.0"
+  default = "24.22.2"
 }
 
 variable "NPM_VERSION" {
-  default = "11.21.0"
+  default = "11.21.2"
 }
 
 variable "BUN_VERSION" {
-  default = "1.4.2"
+  default = "1.4.4"
 }
 
 # .NET runtime (ASP.NET Core, distroless) and SDK (dev).
 variable "DOTNET_VERSION" {
-  default = "10.0.12"
+  default = "10.0.14"
 }
 
 variable "DOTNET_SDK_VERSION" {
-  default = "10.0.401"
+  default = "10.0.403"
 }
 
 # Java comes from Debian (openjdk-<major>-jre/jdk-headless). BC-FJA 2.1.1 is
