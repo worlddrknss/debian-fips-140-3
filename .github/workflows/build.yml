@@ -97,30 +97,29 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: env.BUILD == 'true'
 
-      # Keys the base image's apt layer to the ISO week, so the first build
-      # each week picks up Debian security updates instead of the cached layer.
-      # A run started with refresh_apt (security-updates does this) keys it to
-      # the run instead: a mid-week rebuild would otherwise reuse this week's
-      # cached layer and publish the same vulnerable packages again. Other
-      # builds that week reuse the published key (the fips.apt.refresh label),
-      # so they don't fall back to the older cached layer.
+      # Keys the base image's apt layer. The published key (fips.apt.refresh
+      # label) is reused while it's from this week and the published image
+      # has no pending Debian security updates, so the layer cache stays warm.
+      # Otherwise the key is new: a new week, or pending security updates, or
+      # refresh_apt, rerun apt-get upgrade instead of reusing a stale layer.
       - name: Set apt refresh key
         if: env.BUILD == 'true'
         env:
           REFRESH_APT: ${{ inputs.refresh_apt }}
         run: |
           week="$(date -u +%G-W%V)"
-          if [ "$REFRESH_APT" = "true" ]; then
-            key="$week-run$GITHUB_RUN_ID"
+          ref="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/debian-fips-base:latest-dev"
+          published="$(docker buildx imagetools inspect "$ref" --format '{{json .Image}}' 2>/dev/null \
+            | jq -r 'to_entries[0].value.config.Labels["fips.apt.refresh"] // empty' || true)"
+          pending="$(scripts/pending-security-updates.sh "$ref" 2>/dev/null || echo unknown)"
+          echo "published key: ${published:-none}; pending security updates: ${pending:-none}"
+          if [ "$REFRESH_APT" != "true" ] && [ -z "$pending" ] \
+             && { [ "$published" = "$week" ] || [ "${published#"$week"-run}" != "$published" ]; }; then
+            key="$published"
+          elif [ "$REFRESH_APT" != "true" ] && [ -z "$pending" ]; then
+            key="$week"
           else
-            published="$(docker buildx imagetools inspect \
-              "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/debian-fips-base:latest-dev" \
-              --format '{{json .Image}}' 2>/dev/null \
-              | jq -r 'to_entries[0].value.config.Labels["fips.apt.refresh"] // empty' || true)"
-            case "$published" in
-              "$week"-run*) key="$published" ;;
-              *) key="$week" ;;
-            esac
+            key="$week-run$GITHUB_RUN_ID"
           fi
           echo "apt refresh key: $key"
           echo "APT_REFRESH=$key" >> "$GITHUB_ENV"
@@ -177,6 +176,21 @@ jobs:
       - name: Test nginx-ingress
         if: env.BUILD == 'true'
         run: make test-nginx-ingress
+
+      # The images just built must not have pending Debian security updates;
+      # otherwise a stale apt layer was reused and publishing would ship it.
+      - name: Check for pending security updates
+        if: env.BUILD == 'true'
+        run: |
+          status=0
+          for ref in $(docker buildx bake --print 2>/dev/null | jq -r '.target[].tags[0]' | grep -- '-dev$'); do
+            pending="$(scripts/pending-security-updates.sh "$ref")"
+            if [ -n "$pending" ]; then
+              echo "::error::$ref has pending Debian security updates: $pending"
+              status=1
+            fi
+          done
+          exit "$status"
 
       - name: Check distroless images
         if: env.BUILD == 'true'

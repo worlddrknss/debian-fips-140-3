@@ -390,11 +390,16 @@ distroless image plus busybox and the `openssl` CLI.
   land within a day.
 - [update-pins.yml](.github/workflows/update-pins.yml) opens (or updates) one pull request weekly
   when a pinned upstream release has a newer version (Debian digest, Node.js, npm, Go, Bun, .NET,
-  Bouncy Castle TLS), and build.yml merges it once lint and both architecture builds pass, then
-  publishes from main. **The OpenSSL FIPS provider and `bc-fips` versions are never changed automatically**,
-  since only certified versions belong there. The NGINX Ingress Controller and NGINX versions are
-  bumped by hand, since the template patch has to be checked against each release. Python and
-  OpenJDK update through apt.
+  Bouncy Castle TLS, NGINX Ingress Controller with its NGINX version), and build.yml merges it
+  once lint and both architecture builds pass, then publishes from main. A controller release
+  whose template patch no longer applies fails the build and stays open. **The OpenSSL FIPS
+  provider and `bc-fips` versions are never changed automatically**, since only certified
+  versions belong there. Python and OpenJDK update through apt.
+- Every build reruns `apt-get upgrade` when the published images have pending Debian security
+  updates, and fails rather than publish images that still have them. Dependabot pull requests
+  merge automatically once the required checks pass, and
+  [alerts.yml](.github/workflows/alerts.yml) opens an issue when an automated run fails (closed
+  by the next successful run).
 - [codeql.yml](.github/workflows/codeql.yml) and [scorecard.yml](.github/workflows/scorecard.yml)
   check the workflows and the repository's security practices; Dependabot keeps the pinned
   actions current.

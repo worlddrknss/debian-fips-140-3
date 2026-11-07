@@ -10,6 +10,10 @@ get `build-YYYYMMDDHHMM-<sha>` releases with signed SBOMs rather than changelog 
 
 ### Added
 
+- Fully automated updates: builds refresh apt whenever the published images have pending Debian
+  security updates and refuse to publish stale packages; Dependabot pull requests merge
+  automatically; the NGINX Ingress Controller and NGINX are bumped by update-pins; a failed
+  automated run opens an issue.
 - NIST hardening: distroless images are tested for setuid/setgid files, world-writable paths and
   `/etc/shadow`; Dockle (CIS Docker Benchmark) runs in CI and fails on distroless-image findings.
 - cosign keyless signatures on every published image, and a Sigstore bundle for every SBOM in
