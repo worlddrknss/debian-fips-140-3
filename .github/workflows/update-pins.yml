@@ -24,32 +24,60 @@ jobs:
       - name: Update pins
         run: scripts/update-pins.sh "$RUNNER_TEMP/changes.md"
 
-      # Pull requests opened with GITHUB_TOKEN don't trigger workflows, so the
-      # build is dispatched on the branch explicitly; its checks show on the PR.
+      # One branch and one pull request: a newer update replaces the open one.
+      # Pull requests opened with GITHUB_TOKEN start their pull_request runs
+      # in "action_required", so this approves them; build.yml merges the pull
+      # request once lint and both builds pass there. (A dispatched build
+      # doesn't help: required checks only count runs attached to the pull
+      # request.)
       - name: Open pull request
         env:
           GH_TOKEN: ${{ github.token }}
+          BRANCH: update-pins/auto
         run: |
           if git diff --quiet; then
             echo "All pins are current."
             exit 0
           fi
-          branch="update-pins/$(date -u +%Y%m%d)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
+          git switch -C "$BRANCH"
           git commit -am "chore: update pinned upstream versions" -m "$(cat "$RUNNER_TEMP/changes.md")"
-          git push --force origin "$branch"
-          if ! gh pr view "$branch" >/dev/null 2>&1; then
-            {
-              echo "Pinned upstream versions with newer releases:"
-              echo
-              cat "$RUNNER_TEMP/changes.md"
-              echo
-              echo "Checksums were computed from the official release files by \`scripts/update-pins.sh\`."
-              echo "The OpenSSL FIPS provider and \`bc-fips\` are never bumped automatically."
-            } > "$RUNNER_TEMP/body.md"
-            gh pr create --head "$branch" --title "chore: update pinned upstream versions" \
+          git push --force origin "$BRANCH"
+          {
+            echo "Pinned upstream versions with newer releases:"
+            echo
+            cat "$RUNNER_TEMP/changes.md"
+            echo
+            echo "Checksums were computed from the official release files by \`scripts/update-pins.sh\`."
+            echo "The OpenSSL FIPS provider and \`bc-fips\` are never bumped automatically."
+          } > "$RUNNER_TEMP/body.md"
+          if gh pr view "$BRANCH" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --head "$BRANCH" --title "chore: update pinned upstream versions" \
               --body-file "$RUNNER_TEMP/body.md"
           fi
-          gh workflow run build.yml --ref "$branch"
+
+          # The runs appear a few seconds after the push. Approves whatever is
+          # waiting for a minute, stopping once a pass finds nothing new.
+          sha="$(git rev-parse HEAD)"
+          approved=0
+          for _ in $(seq 12); do
+            sleep 5
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$sha&status=action_required" \
+              -q '.workflow_runs[].id')"
+            if [ -z "$runs" ]; then
+              [ "$approved" -gt 0 ] && break
+              continue
+            fi
+            for run in $runs; do
+              gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run/approve" >/dev/null
+              echo "Approved run $run."
+              approved=$((approved + 1))
+            done
+          done
+          if [ "$approved" -eq 0 ]; then
+            echo "::error::No pull request runs were waiting for approval; the pin update can't merge."
+            exit 1
+          fi

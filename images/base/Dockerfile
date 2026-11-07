@@ -96,13 +96,16 @@ ARG OPENSSL_FIPS_VERSION
 ARG OPENSSL_FIPS_CMVP
 # Changing this value reruns the apt layer below. CI sets it to the ISO week
 # so scheduled builds pick up Debian security updates despite the layer cache.
+# The fips.apt.refresh label records it, so later builds that week reuse the
+# published key instead of an older cached layer (see build.yml).
 ARG APT_REFRESH=""
 
 LABEL org.opencontainers.image.title="debian-fips-base" \
       org.opencontainers.image.description="Debian slim with OpenSSL routed through the OpenSSL ${OPENSSL_FIPS_VERSION} FIPS provider (dev variant: shell and apt)" \
       org.opencontainers.image.source="https://github.com/worlddrknss/debian-fips-140-3" \
       fips.openssl.provider.version="${OPENSSL_FIPS_VERSION}" \
-      fips.openssl.provider.cmvp="${OPENSSL_FIPS_CMVP}"
+      fips.openssl.provider.cmvp="${OPENSSL_FIPS_CMVP}" \
+      fips.apt.refresh="${APT_REFRESH}"
 
 # Unprivileged user for workloads (UID/GID 65532, the distroless convention).
 # The dev image defaults to root so builds can install packages; the
