@@ -61,6 +61,13 @@ get `build-YYYYMMDDHHMM-<sha>` releases with signed SBOMs rather than changelog 
   UID 101 (it inherited `/home/nonroot` as its working directory and crash-looped).
 - `debian-fips-nginx-ingress` reloads NGINX without a shell. The controller ran `nginx -s reload`
   through `sh -c`, which the distroless image lacks, so no configuration was ever applied.
+- Security rebuilds now rerun `apt-get upgrade`. They used to reuse the week's cached apt layer
+  and publish the same packages, so the daily check fired again every day.
+- Pin update pull requests merge again. Their checks never counted toward the required checks,
+  so every update since October was left open; there is now one `update-pins/auto` pull request
+  that is replaced by newer updates.
+- The registry keeps 40 tagged images per package, so every build with a release (10) can still
+  be pulled.
 
 ## [0.1.0] - 2026-09-25
 

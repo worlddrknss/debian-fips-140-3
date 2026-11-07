@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      refresh_apt:
+        description: "Rebuild the apt layer now (pick up Debian security updates released this week)"
+        type: boolean
+        default: false
   # Weekly rebuild picks up Debian security updates.
   schedule:
     - cron: "0 6 * * 1"
@@ -94,12 +99,47 @@ jobs:
 
       # Keys the base image's apt layer to the ISO week, so the first build
       # each week picks up Debian security updates instead of the cached layer.
+      # A run started with refresh_apt (security-updates does this) keys it to
+      # the run instead: a mid-week rebuild would otherwise reuse this week's
+      # cached layer and publish the same vulnerable packages again. Other
+      # builds that week reuse the published key (the fips.apt.refresh label),
+      # so they don't fall back to the older cached layer.
       - name: Set apt refresh key
         if: env.BUILD == 'true'
-        run: echo "APT_REFRESH=$(date -u +%G-W%V)" >> "$GITHUB_ENV"
+        env:
+          REFRESH_APT: ${{ inputs.refresh_apt }}
+        run: |
+          week="$(date -u +%G-W%V)"
+          if [ "$REFRESH_APT" = "true" ]; then
+            key="$week-run$GITHUB_RUN_ID"
+          else
+            published="$(docker buildx imagetools inspect \
+              "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/debian-fips-base:latest-dev" \
+              --format '{{json .Image}}' 2>/dev/null \
+              | jq -r 'to_entries[0].value.config.Labels["fips.apt.refresh"] // empty' || true)"
+            case "$published" in
+              "$week"-run*) key="$published" ;;
+              *) key="$week" ;;
+            esac
+          fi
+          echo "apt refresh key: $key"
+          echo "APT_REFRESH=$key" >> "$GITHUB_ENV"
 
       - name: Build images
+        id: bake
         if: env.BUILD == 'true'
+        continue-on-error: true
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
+        with:
+          source: .
+          targets: default,test
+          load: true
+
+      # One retry for transient cache errors ("error writing layer blob:
+      # not_found"). Layers that finished are reused, so a real build failure
+      # fails again quickly.
+      - name: Build images (retry)
+        if: env.BUILD == 'true' && steps.bake.outcome == 'failure'
         uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
@@ -380,26 +420,32 @@ jobs:
     permissions:
       packages: write
     steps:
-      # Keeps the 20 newest tagged images of each package (5 builds, each with
-      # up to 4 variants) and deletes everything else, including untagged
-      # per-arch images no longer referenced by a kept tag.
+      # Keeps the 40 newest tagged images of each package (10 builds, each with
+      # up to 4 variants, matching the 10 build releases and their SBOMs) and
+      # deletes everything else, including untagged per-arch images no longer
+      # referenced by a kept tag.
       - uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
           packages: debian-fips-base,debian-fips-go,debian-fips-node,debian-fipsbase-bun,debian-fips-python,debian-fips-dotnet,debian-fips-java,debian-fips-nginx-ingress
-          keep-n-tagged: 20
+          keep-n-tagged: 40
           exclude-tags: latest,latest-dev,latest-pqc,latest-pqc-dev
           delete-untagged: true
           validate: true
 
-  # Closes the loop on update-pins. That workflow opens its pull request with
-  # GITHUB_TOKEN, which can't trigger pull_request runs, so it dispatches this
-  # workflow on the branch instead. Once lint and both builds pass here, the
-  # pull request is merged. A merge made with GITHUB_TOKEN doesn't trigger the
-  # push build on main either, so main is dispatched explicitly to publish.
-  # Never runs for human branches: only update-pins/* dispatches.
+  # Closes the loop on update-pins. Its pull request comes from GITHUB_TOKEN,
+  # so this pull_request run waits for approval; update-pins approves it. The
+  # required checks only count runs attached to the pull request, which is why
+  # this runs here and not in a dispatched build. Once lint and both builds
+  # pass, the pull request is merged. A merge made with GITHUB_TOKEN doesn't
+  # trigger the push build on main, so main is dispatched explicitly to
+  # publish. Only the bot's update-pins/auto pull request is merged.
   automerge:
     needs: [lint, build]
-    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/update-pins/')
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'update-pins/auto' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -409,18 +455,9 @@ jobs:
       - name: Merge the pin update and publish from main
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          pr=$(gh pr view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --json number,state,headRefOid \
-            -q 'select(.state == "OPEN") | "\(.number) \(.headRefOid)"')
-          if [ -z "$pr" ]; then
-            echo "No open pull request for $GITHUB_REF_NAME."
-            exit 0
-          fi
-          read -r number head <<<"$pr"
+          NUMBER: ${{ github.event.pull_request.number }}
           # Only merge the commit this run built.
-          if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "::error::The branch moved since this build ($head vs $GITHUB_SHA); not merging."
-            exit 1
-          fi
-          gh pr merge "$number" -R "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$GITHUB_SHA"
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr merge "$NUMBER" -R "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$HEAD_SHA"
           gh workflow run build.yml -R "$GITHUB_REPOSITORY" --ref main

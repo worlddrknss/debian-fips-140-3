@@ -382,14 +382,16 @@ distroless image plus busybox and the `openssl` CLI.
   with Grype (results in code scanning; report-only, with the [OpenVEX](vex/) statements
   applied). On `main`, images are published with SBOMs, provenance attestations and cosign
   signatures, a GitHub Release records the build with signed SBOMs, and the registry keeps the
-  20 newest tagged images per package (at least the 5 most recent builds).
-- [security-updates.yml](.github/workflows/security-updates.yml) checks daily whether Debian has
-  published a security update for a package in the images, and rebuilds them if so, so Debian
-  security fixes land within a day.
-- [update-pins.yml](.github/workflows/update-pins.yml) opens a pull request weekly when a pinned
-  upstream release has a newer version (Debian digest, Node.js, npm, Go, Bun, .NET, Bouncy Castle
-  TLS), builds it, and merges it once lint and both architecture builds pass, then publishes
-  from main. **The OpenSSL FIPS provider and `bc-fips` versions are never changed automatically**,
+  40 newest tagged images per package (at least the 10 most recent builds, matching the 10
+  build releases).
+- [security-updates.yml](.github/workflows/security-updates.yml) checks daily (except Mondays,
+  when the weekly build runs) whether Debian has published a security update for a package in
+  the images, and if so rebuilds them with a fresh `apt-get upgrade`, so Debian security fixes
+  land within a day.
+- [update-pins.yml](.github/workflows/update-pins.yml) opens (or updates) one pull request weekly
+  when a pinned upstream release has a newer version (Debian digest, Node.js, npm, Go, Bun, .NET,
+  Bouncy Castle TLS), and build.yml merges it once lint and both architecture builds pass, then
+  publishes from main. **The OpenSSL FIPS provider and `bc-fips` versions are never changed automatically**,
   since only certified versions belong there. The NGINX Ingress Controller and NGINX versions are
   bumped by hand, since the template patch has to be checked against each release. Python and
   OpenJDK update through apt.

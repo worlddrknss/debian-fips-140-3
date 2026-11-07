@@ -5,9 +5,12 @@ name: security-updates
 # update for any package in them. It asks each published -dev image (the
 # distroless images are assembled from the same packages) what apt would
 # upgrade from the security archive.
+#
+# Not on Mondays: the weekly build an hour later starts a new apt refresh key
+# and picks the updates up anyway.
 on:
   schedule:
-    - cron: "0 5 * * *"
+    - cron: "0 5 * * 0,2-6"
   workflow_dispatch:
 
 permissions:
@@ -40,8 +43,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "rebuild=$([ -n "$found" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
+      # refresh_apt reruns the apt layer; a plain rebuild would reuse this
+      # week's cached layer and publish the same packages again.
       - name: Rebuild and publish
         if: steps.check.outputs.rebuild == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref main
+        run: gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref main -f refresh_apt=true
