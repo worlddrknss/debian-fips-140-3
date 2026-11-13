@@ -1,50 +1,41 @@
 name: alerts
 
-# Opens an issue when an automated run fails (the scheduled and dispatched
-# builds on main, the pin and security update workflows, and the update-pins
-# pull request build), so a broken pipeline can't go unnoticed. The next
-# successful run of the same workflow closes it.
+# Opens an issue when automation is broken: a failed build, security-updates
+# or update-pins run on main, or a pin update pull request whose build failed
+# or that hasn't merged within two days. The issue closes once that's fixed.
+# scripts/automation-alerts.sh reads the current state, so it runs on a
+# schedule as well: GitHub sends no workflow_run event for runs that
+# GITHUB_TOKEN started (the pin pull request and the dispatched builds).
 on:
+  schedule:
+    - cron: "17 */3 * * *"
   workflow_run:
     workflows: [build, update-pins, security-updates]
     types: [completed]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: alerts
+  cancel-in-progress: false
+
 jobs:
   alert:
-    if: >-
-      github.event.workflow_run.head_branch == 'update-pins/auto' ||
-      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event != 'pull_request')
     runs-on: ubuntu-24.04
     permissions:
+      contents: read
+      actions: read
       issues: write
+      pull-requests: read
     steps:
-      - name: Open or close the alert issue
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Open or close alert issues
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          WORKFLOW: ${{ github.event.workflow_run.name }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-        run: |
-          title="Automated $WORKFLOW failed"
-          issue="$(gh issue list --state open --label automation --search "\"$title\" in:title" \
-            --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n1)"
-          case "$CONCLUSION" in
-            failure|timed_out|startup_failure)
-              body="[$WORKFLOW on \`$BRANCH\`]($RUN_URL) ended with \`$CONCLUSION\`."
-              if [ -n "$issue" ]; then
-                gh issue comment "$issue" --body "$body"
-              else
-                gh label create automation --color B60205 --force >/dev/null
-                gh issue create --title "$title" --label automation \
-                  --body "$body This issue closes when the next $WORKFLOW run succeeds."
-              fi
-              ;;
-            success)
-              [ -z "$issue" ] || gh issue close "$issue" --comment "[$WORKFLOW succeeded]($RUN_URL)."
-              ;;
-          esac
+        run: scripts/automation-alerts.sh

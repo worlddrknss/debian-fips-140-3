@@ -398,8 +398,9 @@ distroless image plus busybox and the `openssl` CLI.
 - Every build reruns `apt-get upgrade` when the published images have pending Debian security
   updates, and fails rather than publish images that still have them. Dependabot pull requests
   merge automatically once the required checks pass, and
-  [alerts.yml](.github/workflows/alerts.yml) opens an issue when an automated run fails (closed
-  by the next successful run).
+  [alerts.yml](.github/workflows/alerts.yml) checks every three hours and opens an issue when
+  an automated run on `main` fails or a pin update pull request fails its build or sits unmerged
+  for two days (closed once that's fixed).
 - [codeql.yml](.github/workflows/codeql.yml) and [scorecard.yml](.github/workflows/scorecard.yml)
   check the workflows and the repository's security practices; Dependabot keeps the pinned
   actions current.
