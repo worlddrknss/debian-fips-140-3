@@ -59,6 +59,10 @@ get `build-YYYYMMDDHHMM-<sha>` releases with signed SBOMs rather than changelog 
 
 ### Fixed
 
+- Automation alerts now cover the pin update pull request and dispatched builds. They check
+  state every three hours instead of waiting for `workflow_run` events, which GitHub doesn't
+  send for runs started by `GITHUB_TOKEN`, and also flag a pin update left unmerged for two days.
+
 - Build tags include the time (`YYYYMMDDHHMM-<commit>`), so builds from the same day sort in
   order for tools that pick the newest tag.
 - `debian-fips-nginx-ingress` runs from `/`, so the controller can read its templates as
