@@ -32,7 +32,7 @@ FROM ${DEBIAN_IMAGE} AS source
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG NIC_VERSION=5.6.3
+ARG NIC_VERSION=5.7.1
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl patch \
@@ -41,7 +41,7 @@ RUN apt-get update \
 COPY images/nginx-ingress/nginx.tmpl.patch /tmp/nginx.tmpl.patch
 WORKDIR /src
 RUN case "${NIC_VERSION}" in \
-      5.6.3) sha256=81424546e74c95ca5215ce00f8feebea1ea931049d86c2e3688c4292b27565c1 ;; \
+      5.7.1) sha256=18c6abcc406a2368642af56ca78255cb7ae6f6fd8025cfb835f298c2eea2dfe7 ;; \
       *) echo "Unsupported NIC_VERSION: ${NIC_VERSION}" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /tmp/src.tar.gz \
@@ -57,7 +57,7 @@ FROM ${GO_IMAGE} AS controller
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG NIC_VERSION=5.6.3
+ARG NIC_VERSION=5.7.1
 ARG TARGETARCH
 
 # GOTOOLCHAIN=local keeps the FIPS toolchain; the build fails rather than
@@ -84,8 +84,8 @@ FROM ${BASE_DEV_IMAGE} AS dev
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG NIC_VERSION=5.6.3
-ARG NGINX_VERSION=1.31.6
+ARG NIC_VERSION=5.7.1
+ARG NGINX_VERSION=1.31.8
 ARG NGINX_MODULES="nginx-module-njs nginx-module-otel nginx-module-acme nginx-module-xslt nginx-module-geoip nginx-module-image-filter"
 
 LABEL org.opencontainers.image.title="debian-fips-nginx-ingress" \
@@ -179,8 +179,8 @@ USER 101
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS runtime
 
-ARG NIC_VERSION=5.6.3
-ARG NGINX_VERSION=1.31.6
+ARG NIC_VERSION=5.7.1
+ARG NGINX_VERSION=1.31.8
 
 LABEL org.opencontainers.image.title="debian-fips-nginx-ingress" \
       org.opencontainers.image.description="Distroless F5 NGINX Ingress Controller ${NIC_VERSION} (NGINX ${NGINX_VERSION}) with TLS through the OpenSSL FIPS provider" \

@@ -97,11 +97,11 @@ variable "JAVA_VERSION" {
 # F5 NGINX Ingress Controller source release and the NGINX OSS version its
 # Debian image uses (nginx.org mainline packages).
 variable "NIC_VERSION" {
-  default = "5.6.3"
+  default = "5.7.1"
 }
 
 variable "NGINX_VERSION" {
-  default = "1.31.6"
+  default = "1.31.8"
 }
 
 # Python comes from Debian (security updates arrive through apt), so this is
