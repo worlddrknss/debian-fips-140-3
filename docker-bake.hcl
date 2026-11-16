@@ -63,11 +63,11 @@ variable "OPENSSL_FIPS_PQC_VERSION" {
 }
 
 variable "GO_VERSION" {
-  default = "1.27.3"
+  default = "1.27.4"
 }
 
 variable "NODE_VERSION" {
-  default = "24.22.2"
+  default = "24.22.3"
 }
 
 variable "NPM_VERSION" {
@@ -80,11 +80,11 @@ variable "BUN_VERSION" {
 
 # .NET runtime (ASP.NET Core, distroless) and SDK (dev).
 variable "DOTNET_VERSION" {
-  default = "10.0.14"
+  default = "10.0.15"
 }
 
 variable "DOTNET_SDK_VERSION" {
-  default = "10.0.403"
+  default = "10.0.404"
 }
 
 # Java comes from Debian (openjdk-<major>-jre/jdk-headless). BC-FJA 2.1.1 is

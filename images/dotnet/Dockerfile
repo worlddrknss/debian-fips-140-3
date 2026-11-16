@@ -25,8 +25,8 @@ FROM ${DEBIAN_IMAGE} AS dotnet-download
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG DOTNET_VERSION=10.0.14
-ARG DOTNET_SDK_VERSION=10.0.403
+ARG DOTNET_VERSION=10.0.15
+ARG DOTNET_SDK_VERSION=10.0.404
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -39,13 +39,13 @@ RUN case "${TARGETARCH}" in \
       *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && case "${DOTNET_VERSION}-${rid}" in \
-      10.0.14-x64) runtime_sha512=dd024fd2616926a555b75cbf7a836f6dce998199f0596d9d75676dca2b9d59c8ee8673c6ac23473c0f1a4bdd59eb5cd02fe9ab097eeaf2dd8c8bd117c85e7031 ;; \
-      10.0.14-arm64) runtime_sha512=b5d5ef8eaee3a0ebd24a359be9a0a4cf67b80b8e2e39b55427778eabad62bf6390ab48100d3b134d152436baa1a3bbff14a576fea1a2f2f7a396707056361afb ;; \
+      10.0.15-x64) runtime_sha512=704751c6d671b720935a18849e8f10cdb6938549e9cf25493050ebc838a95eb5cb1caa9936d2edae3b85c5975778ed926e9b736e3a2582d861411babba3229c3 ;; \
+      10.0.15-arm64) runtime_sha512=1d82a6822871c0e750d2d3d3b9b27657d24a2083eb999c2f78b39b0cd10862178cb2c6d21f941579cd521baf5738a78d3378e5754c5895a93d7546135eb40ec6 ;; \
       *) echo "Unsupported DOTNET_VERSION/arch: ${DOTNET_VERSION}/${rid}" >&2; exit 1 ;; \
     esac \
  && case "${DOTNET_SDK_VERSION}-${rid}" in \
-      10.0.403-x64) sdk_sha512=b7b3d8461cf98b07d2552ce9199702fa3ad010ac2671a5f8cd5136f7534e50f6855ba7bbb02b11494563f1d04156276a31cda1103b900e5eecd0d9473dc7b9c5 ;; \
-      10.0.403-arm64) sdk_sha512=0966aa2b70f4677b8319be9df447a78a0dcd6164836425b55a68fd714f4023feb87b4cac21b9a996b79472ad54487cd0adcd2a9dfd570e2b2a1d26423a2baa9b ;; \
+      10.0.404-x64) sdk_sha512=577d0eb17fec33d029104c5c63a1ab0accc3e28776274abef2218dbac5af18d2109b5406d26b31d76f5c245215e3ba0926a94c20246c672c41847c9e1eb1dc50 ;; \
+      10.0.404-arm64) sdk_sha512=3533a3869da219cac45c567aadac3d8e96cdf1c6a04fe1c1d5fdeefea5d45af8424488f0144730d11b4a751f7ad546fb11e4c2b2725cd8401efee726711f8f11 ;; \
       *) echo "Unsupported DOTNET_SDK_VERSION/arch: ${DOTNET_SDK_VERSION}/${rid}" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /tmp/runtime.tar.gz \
@@ -64,8 +64,8 @@ RUN case "${TARGETARCH}" in \
 # ---------------------------------------------------------------------------
 FROM ${BASE_DEV_IMAGE} AS dev
 
-ARG DOTNET_VERSION=10.0.14
-ARG DOTNET_SDK_VERSION=10.0.403
+ARG DOTNET_VERSION=10.0.15
+ARG DOTNET_SDK_VERSION=10.0.404
 
 LABEL org.opencontainers.image.title="debian-fips-dotnet" \
       org.opencontainers.image.description=".NET SDK ${DOTNET_SDK_VERSION} (runtime ${DOTNET_VERSION}) with cryptography through the OpenSSL FIPS provider (dev variant: shell and apt)"
@@ -102,7 +102,7 @@ COPY --from=dotnet-download /runtime/ /rootfs/usr/share/dotnet/
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS runtime
 
-ARG DOTNET_VERSION=10.0.14
+ARG DOTNET_VERSION=10.0.15
 
 LABEL org.opencontainers.image.title="debian-fips-dotnet" \
       org.opencontainers.image.description="Distroless ASP.NET Core ${DOTNET_VERSION} runtime with cryptography through the OpenSSL FIPS provider"

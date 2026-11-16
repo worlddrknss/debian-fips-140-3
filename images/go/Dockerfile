@@ -24,7 +24,7 @@ FROM ${DEBIAN_IMAGE} AS go-download
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG GO_VERSION=1.27.3
+ARG GO_VERSION=1.27.4
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -32,8 +32,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 RUN case "${GO_VERSION}-${TARGETARCH}" in \
-      1.27.3-amd64) sha256=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40 ;; \
-      1.27.3-arm64) sha256=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49 ;; \
+      1.27.4-amd64) sha256=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840 ;; \
+      1.27.4-arm64) sha256=3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92 ;; \
       *) echo "Unsupported GO_VERSION/TARGETARCH: ${GO_VERSION}/${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /tmp/go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
@@ -46,7 +46,7 @@ RUN case "${GO_VERSION}-${TARGETARCH}" in \
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
 
-ARG GO_VERSION=1.27.3
+ARG GO_VERSION=1.27.4
 
 LABEL org.opencontainers.image.title="debian-fips-go" \
       org.opencontainers.image.description="Go ${GO_VERSION} building against the FIPS 140-3 Go Cryptographic Module" \
