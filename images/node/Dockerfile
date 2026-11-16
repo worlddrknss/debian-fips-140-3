@@ -25,7 +25,7 @@ FROM ${DEBIAN_IMAGE} AS node-download
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG NODE_VERSION=24.22.2
+ARG NODE_VERSION=24.22.3
 ARG TARGETARCH
 
 RUN apt-get update \
@@ -38,8 +38,8 @@ RUN case "${TARGETARCH}" in \
       *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && case "${NODE_VERSION}-${node_arch}" in \
-      24.22.2-x64) sha256=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75 ;; \
-      24.22.2-arm64) sha256=eb187837a2230d4047161ac0be008584e16b46f726e9c9490ee35dc6b17d9ba8 ;; \
+      24.22.3-x64) sha256=4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb ;; \
+      24.22.3-arm64) sha256=6e51a2ada00f0011cc266f65d98922b403d7ad88f809ca2aa615a5fe1ce6e86c ;; \
       *) echo "Unsupported NODE_VERSION/arch: ${NODE_VERSION}/${node_arch}" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /tmp/node.tar.xz \
@@ -60,7 +60,7 @@ RUN case "${TARGETARCH}" in \
 # ---------------------------------------------------------------------------
 FROM ${BASE_DEV_IMAGE} AS dev
 
-ARG NODE_VERSION=24.22.2
+ARG NODE_VERSION=24.22.3
 # The npm bundled with Node.js lags behind npm's own security fixes, so a newer
 # npm within the same major version is installed over it.
 ARG NPM_VERSION=11.21.2
@@ -95,7 +95,7 @@ COPY --from=node-download /out/share/doc/node/LICENSE /rootfs/usr/local/share/do
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE} AS runtime
 
-ARG NODE_VERSION=24.22.2
+ARG NODE_VERSION=24.22.3
 
 LABEL org.opencontainers.image.title="debian-fips-node" \
       org.opencontainers.image.description="Distroless Node.js ${NODE_VERSION} running its crypto through the OpenSSL FIPS provider"
