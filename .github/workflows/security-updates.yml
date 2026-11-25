@@ -4,7 +4,8 @@ name: security-updates
 # this daily check rebuilds them early when Debian has published a security
 # update for any package in them. It asks each published -dev image (the
 # distroless images are assembled from the same packages) what apt would
-# upgrade from the security archive.
+# upgrade from the security archive, and runs the apps' Trivy release gate
+# (scripts/trivy-fixable.sh) over the tags they pull.
 #
 # Not on Mondays: the weekly build an hour later starts a new apt refresh key
 # and picks the updates up anyway.
@@ -41,12 +42,43 @@ jobs:
             echo "### Pending Debian security updates"
             echo "${found:-none}"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "rebuild=$([ -n "$found" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "found=$found" >> "$GITHUB_OUTPUT"
+
+      # The downstream apps (Vara Performance, D76 Riders, madebymeyrill) gate
+      # every release on Trivy: fixable HIGH/CRITICAL (scripts/trivy-fixable.sh).
+      # Scan the tags they pull, so a finding that would block them rebuilds
+      # the images here first, even when apt's security check sees nothing.
+      - name: Look for fixable HIGH/CRITICAL findings (Trivy, the apps' release gate)
+        id: trivy
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          found=""
+          for ref in debian-fipsbase-bun:latest-pqc debian-fipsbase-bun:latest-pqc-dev \
+                     debian-fips-base:latest debian-fips-node:latest debian-fips-python:latest \
+                     debian-fips-dotnet:latest debian-fips-java:latest debian-fips-nginx-ingress:latest; do
+            image="ghcr.io/$owner/$ref"
+            docker buildx imagetools inspect "$image" >/dev/null 2>&1 || { echo "$image: not published"; continue; }
+            hits="$(scripts/trivy-fixable.sh "$image" | paste -sd',' -)"
+            echo "$image: ${hits:-none}"
+            [ -z "$hits" ] || found="$found $ref: $hits;"
+          done
+          {
+            echo "### Fixable HIGH/CRITICAL (Trivy)"
+            echo "${found:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "found=$found" >> "$GITHUB_OUTPUT"
+
+      - name: Decide
+        id: decide
+        env:
+          APT_FOUND: ${{ steps.check.outputs.found }}
+          TRIVY_FOUND: ${{ steps.trivy.outputs.found }}
+        run: echo "rebuild=$([ -n "$APT_FOUND$TRIVY_FOUND" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       # refresh_apt reruns the apt layer; a plain rebuild would reuse this
       # week's cached layer and publish the same packages again.
       - name: Rebuild and publish
-        if: steps.check.outputs.rebuild == 'true'
+        if: steps.decide.outputs.rebuild == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref main -f refresh_apt=true
