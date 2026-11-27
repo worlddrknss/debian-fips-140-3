@@ -218,13 +218,13 @@ jobs:
       # Pull requests from forks get a read-only token and can't upload.
       - name: Upload runtime scan results to code scanning
         if: env.BUILD == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           sarif_file: scan/runtime
 
       - name: Upload dev scan results to code scanning
         if: env.BUILD == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           sarif_file: scan/dev
 
@@ -459,7 +459,7 @@ jobs:
       # up to 4 variants, matching the 10 build releases and their SBOMs) and
       # deletes everything else, including untagged per-arch images no longer
       # referenced by a kept tag.
-      - uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+      - uses: dataaxiom/ghcr-cleanup-action@ac45a8c04b1eb4b27974ca79a0a74f344c93664b # v1.3.0
         with:
           packages: debian-fips-base,debian-fips-go,debian-fips-node,debian-fipsbase-bun,debian-fips-python,debian-fips-dotnet,debian-fips-java,debian-fips-nginx-ingress
           keep-n-tagged: 40
